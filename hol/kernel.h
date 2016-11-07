@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef RESEARCH_MATH_HOL_KERNEL_H_
-#define RESEARCH_MATH_HOL_KERNEL_H_
+#ifndef DEEPMATH_HOL_KERNEL_H_
+#define DEEPMATH_HOL_KERNEL_H_
 
 #include <stdint.h>
 
@@ -346,4 +346,4 @@ new_basic_type_definition(const ThmPtr& existence_proof);
 
 }  // namespace hol
 
-#endif  // RESEARCH_MATH_HOL_KERNEL_H_
+#endif  // DEEPMATH_HOL_KERNEL_H_

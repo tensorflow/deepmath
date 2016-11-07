@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef RESEARCH_MATH_HOL_TRACE_H_
-#define RESEARCH_MATH_HOL_TRACE_H_
+#ifndef DEEPMATH_HOL_TRACE_H_
+#define DEEPMATH_HOL_TRACE_H_
 
 #include <string>
 
@@ -24,4 +24,4 @@ void read_trace(const std::string& fname, bool print_proved, bool debug);
 
 }  // namespace hol
 
-#endif  // RESEARCH_MATH_HOL_TRACE_H_
+#endif  // DEEPMATH_HOL_TRACE_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef RESEARCH_MATH_HOL_GENERAL_H_
-#define RESEARCH_MATH_HOL_GENERAL_H_
+#ifndef DEEPMATH_HOL_GENERAL_H_
+#define DEEPMATH_HOL_GENERAL_H_
 
 #include "hol/kernel.h"
 
@@ -25,4 +25,4 @@ bool type_match(const TypePtr& general_type, const TypePtr& particular_type,
 
 }  // namespace hol
 
-#endif  // RESEARCH_MATH_HOL_GENERAL_H_
+#endif  // DEEPMATH_HOL_GENERAL_H_

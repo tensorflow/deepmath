@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef RESEARCH_MATH_HOL_PRINTER_H_
-#define RESEARCH_MATH_HOL_PRINTER_H_
+#ifndef DEEPMATH_HOL_PRINTER_H_
+#define DEEPMATH_HOL_PRINTER_H_
 
 #include "hol/kernel.h"
 
@@ -30,4 +30,4 @@ void declare_const_syntax(ConstId, const std::string&);
 
 }  // namespace hol
 
-#endif  // RESEARCH_MATH_HOL_PRINTER_H_
+#endif  // DEEPMATH_HOL_PRINTER_H_

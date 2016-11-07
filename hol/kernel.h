@@ -48,6 +48,9 @@ typedef uint64_t ConstId;
 // | Tyapp of string *  hol_type list
 
 class Type final {
+  // Private struct for make_shared purposes
+  struct Secret {};
+
  public:
   bool operator==(const Type& rhs) const;
   bool operator!=(const Type& rhs) const { return !(*this == rhs); }
@@ -69,20 +72,20 @@ class Type final {
   friend std::set<TypeVar> tyvars(const TypePtr& type);
   ~Type();
 
+  // Public but uncallable so that make_shared works
+  explicit Type(const TypeVar value, Secret)
+      : kind_(TYVAR), type_var_(value) {}
+  Type(const TypeCon type_con, const std::vector<TypePtr>& args, Secret)
+      : kind_(TYAPP), type_(make_tuple(type_con, args)) {}
+
  private:
   friend class Term;
-  // Needed to use make_shared
-  friend void __gnu_cxx::new_allocator<Type>::construct<Type>(
-      Type*, const hol::TypeVar&);
-  friend void __gnu_cxx::new_allocator<Type>::construct<Type>(
-      Type*, const hol::TypeCon&, const std::vector<hol::TypePtr>&);
-  explicit Type(const TypeVar value) : kind_(TYVAR), type_var_(value) {}
-  Type(const TypeCon type_con, const std::vector<TypePtr>& args)
-      : kind_(TYAPP), type_(make_tuple(type_con, args)) {}
+
   static TypePtr unsafe_tyapp(const TypeCon type_con,
                               const std::vector<TypePtr>& args) {
-    return std::make_shared<Type>(type_con, args);
+    return std::make_shared<Type>(type_con, args, Secret());
   }
+
   enum TypeKind { TYVAR, TYAPP };
   // kind_ remembers if the type is a type variable or type application
   const TypeKind kind_;
@@ -120,6 +123,9 @@ class TermOrdering {
 // | Abs of term * term
 
 class Term final {
+  // Private struct for make_shared purposes
+  struct Secret {};
+
  public:
   bool operator==(const Term& rhs) const;
   bool operator!=(const Term& rhs) const { return !(*this == rhs); }
@@ -173,42 +179,34 @@ class Term final {
   new_basic_type_definition(const ThmPtr& existence_proof);
   ~Term();
 
- private:
-  friend void __gnu_cxx::new_allocator<Term>::construct<Term>(
-      Term*, const hol::TermVar&, const hol::TypePtr&);
-  friend void __gnu_cxx::new_allocator<Term>::construct<Term>(
-      Term*, const std::tuple<hol::TermVar, hol::TypePtr>&);
-  friend void __gnu_cxx::new_allocator<Term>::construct<Term>(
-      Term*, const hol::ConstId&, const hol::TypePtr&);
-  friend void __gnu_cxx::new_allocator<Term>::construct<Term>(
-      Term*, const hol::TermPtr&, const hol::TermPtr&);
-  friend void __gnu_cxx::new_allocator<Term>::construct<Term>(
-      Term*, const hol::TermVar&, const hol::TypePtr&, const hol::TermPtr&);
-  Term(const TermVar i, const TypePtr& t)
+  // Public but uncallable for make_shared purposes
+  Term(const TermVar i, const TypePtr& t, Secret)
       : kind_(VAR), term_var_(std::make_tuple(i, t)) {}
-  explicit Term(const std::tuple<TermVar, TypePtr>& value)
+  explicit Term(const std::tuple<TermVar, TypePtr>& value, Secret)
       : kind_(VAR), term_var_(value) {}
-  Term(const ConstId i, const TypePtr& t)
+  Term(const ConstId i, const TypePtr& t, Secret)
       : kind_(CONST), term_const_(std::make_tuple(i, t)) {}
-  Term(const TermPtr& l, const TermPtr& r)
+  Term(const TermPtr& l, const TermPtr& r, Secret)
       : kind_(COMB), term_comb_(std::make_tuple(l, r)) {}
-  Term(const TermVar i, const TypePtr& ty, const TermPtr& t)
+  Term(const TermVar i, const TypePtr& ty, const TermPtr& t, Secret)
       : kind_(ABS), term_abs_(std::make_tuple(i, ty, t)) {}
+
+ private:
   static TermPtr unsafe_var(const TermVar term_var, const TypePtr& type) {
-    return std::make_shared<Term>(term_var, type);
+    return std::make_shared<Term>(term_var, type, Secret());
   }
   static TermPtr unsafe_var(const std::tuple<TermVar, TypePtr>& value) {
-    return std::make_shared<Term>(value);
+    return std::make_shared<Term>(value, Secret());
   }
   static TermPtr unsafe_const(const ConstId const_id, const TypePtr& type) {
-    return std::make_shared<Term>(const_id, type);
+    return std::make_shared<Term>(const_id, type, Secret());
   }
   static TermPtr unsafe_comb(const TermPtr& l, const TermPtr& r) {
-    return std::make_shared<Term>(l, r);
+    return std::make_shared<Term>(l, r, Secret());
   }
   static TermPtr unsafe_abs(const TermVar v, const TypePtr& ty,
                             const TermPtr& t) {
-    return std::make_shared<Term>(v, ty, t);
+    return std::make_shared<Term>(v, ty, t, Secret());
   }
   static TermPtr unsafe_mk_eq(const TermPtr& lhs, const TermPtr& rhs);
   static TermPtr vsubst_rec(Substitution* s, const TermPtr& tm);
@@ -246,6 +244,9 @@ const TypePtr type_bool = mk_type(type_con_bool, std::vector<TypePtr>());
 const TypePtr type_alpha = mk_vartype(type_var_alpha);
 
 class Thm final {
+  // Private struct for make_shared purposes
+  struct Secret {};
+
  public:
   const std::set<TermPtr, TermOrdering> hyps_;
   const TermPtr concl_;
@@ -266,15 +267,14 @@ class Thm final {
                     std::tuple<ThmPtr, ThmPtr> >
   new_basic_type_definition(const ThmPtr& existence_proof);
 
- private:
-  friend void __gnu_cxx::new_allocator<Thm>::construct<Thm>(
-      Thm*, const std::set<hol::TermPtr, hol::TermOrdering>&,
-      const hol::TermPtr&);
-  Thm(const std::set<TermPtr, TermOrdering>& hyps, const TermPtr& concl)
+  // Public but uncallable for make_shared use
+  Thm(const std::set<TermPtr, TermOrdering>& hyps, const TermPtr& concl, Secret)
       : hyps_(hyps), concl_(concl) {}
+
+ private:
   static ThmPtr mk(const std::set<TermPtr, TermOrdering>& hyps,
                    const TermPtr& concl) {
-    return std::make_shared<Thm>(hyps, concl);
+    return std::make_shared<Thm>(hyps, concl, Secret());
   }
 };
 

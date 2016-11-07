@@ -90,7 +90,7 @@ TypeCon new_type(uint64_t arity) {
 }
 
 TypePtr mk_vartype(const TypeVar type_var) {
-  return std::make_shared<Type>(type_var);
+  return std::make_shared<Type>(type_var, Type::Secret());
 }
 
 TypePtr mk_type(const TypeCon type_con, const std::vector<TypePtr>& args) {

@@ -7,7 +7,7 @@ between [Google Research](https://research.google.com) and several universities.
 ## DISCLAIMER:
 
 The source code in this repository is not an official Google product, but
-is a of research collaboration with external research teams.
+is a research collaboration with external research teams.
 
 For now the repository contains only a C++ implementation of the [HOL Light
 kernel](https://www.cl.cam.ac.uk/~jrh13/hol-light), which we have released

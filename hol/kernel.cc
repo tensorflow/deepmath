@@ -57,9 +57,8 @@ bool Type::operator<(const Type& rhs) const {
 }
 
 Type::~Type() {
-  using namespace std;
   if (is_vartype())
-    type_var_.~string();
+    type_var_.~TypeVar();
   if (is_type())
     type_.~tuple();
 }

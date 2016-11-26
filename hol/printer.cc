@@ -20,7 +20,7 @@ limitations under the License.
 #include "hol/kernel.h"
 #include "hol/printer.h"
 
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace hol {
 

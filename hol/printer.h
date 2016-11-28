@@ -24,6 +24,8 @@ std::ostream& operator<<(std::ostream& out, const TypePtr& ty);
 std::ostream& operator<<(std::ostream& out, const TermPtr& term);
 std::ostream& operator<<(std::ostream& out, const ThmPtr& thm);
 
+void print_training_tokens(std::ostream& out, const TermPtr& term, bool types);
+
 // Declares print syntax for most recently declared string
 void declare_type_syntax(TypeCon, const std::string&);
 void declare_const_syntax(ConstId, const std::string&);

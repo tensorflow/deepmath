@@ -20,7 +20,8 @@ limitations under the License.
 
 namespace hol {
 
-void read_trace(const std::string& fname, bool print_proved, bool debug);
+void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
+                bool print_types, bool debug);
 
 }  // namespace hol
 

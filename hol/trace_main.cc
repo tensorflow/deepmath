@@ -19,5 +19,5 @@ limitations under the License.
 
 int main(int argc, char** argv) {
   std::string fname(argv[0]);
-  hol::read_trace(fname, false, false);
+  hol::read_trace(fname, false, false, false, false);
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "hol/general.h"
 #include "hol/kernel.h"
 #include "hol/printer.h"
 
@@ -143,6 +144,143 @@ std::ostream& operator<<(std::ostream& out, const ThmPtr& thm) {
     out << " |- " << thm->concl_;
   }
   return out;
+}
+
+static void print_training_type(std::ostream& out, const TypePtr& ty) {
+  if (ty->is_vartype()) {
+    out << " VT";
+  } else {  // ty->is_type()
+    TypeCon i = std::get<0>(ty->dest_type());
+    std::vector<TypePtr> l = std::get<1>(ty->dest_type());
+    out << " t" << i;
+    if (!l.empty()) {
+      for (uint64_t i = 0; i < l.size(); ++i) {
+        print_training_type(out, l[i]);
+      }
+    }
+  }
+}
+
+void print_training_tokens_parenthesize(std::ostream& out,
+                                        const TermPtr& term) {
+  if (term->is_const()) {
+    out << "c" << std::get<0>(term->dest_const());
+    print_training_type(out, std::get<1>(term->dest_const()));
+  } else if (term->is_var()) {
+    out << "v";
+    print_training_type(out, std::get<1>(term->dest_var()));
+  } else if (term->is_comb()) {
+    TermPtr terml, termr;
+    tie(terml, termr) = term->dest_comb();
+    out << "(";
+    print_training_tokens_parenthesize(out, terml);
+    out << " ";
+    print_training_tokens_parenthesize(out, termr);
+    out << ")";
+  } else {  // term->is_abs()
+    TermVar var;
+    TypePtr type;
+    TermPtr subterm;
+    tie(var, type, subterm) = term->dest_abs();
+    out << "<v";
+    print_training_type(out, type);
+    out << ".";
+    print_training_tokens_parenthesize(out, subterm);
+    out << ">";
+  }
+}
+
+const ConstId const_forall = 5;
+
+static void print_training_tokens_vars(
+    std::map<std::tuple<TermVar, TypePtr>, uint64_t,
+    VariableOrdering>* bound_vars,
+    std::map<std::tuple<TermVar, TypePtr>, uint64_t,
+    VariableOrdering>* free_vars,
+    std::ostream& out, const TermPtr& term, bool types) {
+  if (term->is_const()) {
+    if (arity(term->type_of()) > 0) out << " part";
+    out << " c" << get_const_syntax(std::get<0>(term->dest_const()));
+    if (types) print_training_type(out, term->type_of());
+  } else if (term->is_var()) {
+    auto it = bound_vars->find(term->dest_var());
+    if (it != bound_vars->end()) {
+      out << " b" << it->second;
+    } else {
+      auto it2 = free_vars->find(term->dest_var());
+      if (it2 != free_vars->end()) {
+        out << " f" << it2->second;
+        if (types) print_training_type(out, term->type_of());
+      } else {
+        const auto ret = free_vars->size();
+        out << " f" << ret;
+        (*free_vars)[term->dest_var()] = ret;
+      }
+    }
+  } else if (term->is_comb()) {
+    if (term->rator()->is_const() &&
+        std::get<0>(term->rator()->dest_const()) == const_forall &&
+        term->rand()->is_abs()) {
+      TermVar var;
+      TypePtr type;
+      TermPtr subterm;
+      tie(var, type, subterm) = term->rand()->dest_abs();
+      out << " !";
+      if (types) print_training_type(out, type);
+      auto v = std::make_tuple(var, type);
+      int32_t erased = -1;
+      auto it = bound_vars->find(v);
+      if (it != bound_vars->end()) erased = it->second;
+      (*bound_vars)[v] = bound_vars->size();
+      print_training_tokens_vars(bound_vars, free_vars, out, subterm, types);
+      if (erased != -1)
+        (*bound_vars)[v] = erased;
+      else
+        bound_vars->erase(v);
+    } else {
+      TermPtr hop;
+      std::vector<TermPtr> args;
+      tie(hop, args) = strip_comb(term);
+      if (hop->is_const() && arity(hop->type_of()) == args.size()) {
+        out << " c" << get_const_syntax(std::get<0>(hop->dest_const()));
+        if (types) print_training_type(out, hop->type_of());
+        for (const auto& arg : args)
+          print_training_tokens_vars(bound_vars, free_vars, out, arg, types);
+      } else {
+        TermPtr terml, termr;
+        tie(terml, termr) = term->dest_comb();
+        out << " *";
+        print_training_tokens_vars(bound_vars, free_vars, out, terml, types);
+        print_training_tokens_vars(bound_vars, free_vars, out, termr, types);
+      }
+    }
+  } else {  // term->is_abs()
+    TermVar var;
+    TypePtr type;
+    TermPtr subterm;
+    tie(var, type, subterm) = term->dest_abs();
+    out << " /";
+    if (types) print_training_type(out, term->type_of());
+    auto v = std::make_tuple(var, type);
+    int32_t erased = -1;
+    auto it = bound_vars->find(v);
+    if (it != bound_vars->end()) erased = it->second;
+    (*bound_vars)[v] = bound_vars->size();
+    print_training_tokens_vars(bound_vars, free_vars, out, subterm, types);
+    if (erased != -1)
+      (*bound_vars)[v] = erased;
+    else
+      bound_vars->erase(v);
+  }
+}
+
+void print_training_tokens(std::ostream& out, const TermPtr& term, bool types) {
+  std::map<std::tuple<TermVar, TypePtr>, uint64_t, VariableOrdering>
+      bound_vars{};
+  std::map<std::tuple<TermVar, TypePtr>, uint64_t, VariableOrdering>
+      free_vars{};
+  print_training_tokens_vars(&bound_vars, &free_vars, out, strip_forall(term),
+                             types);
 }
 
 }  // namespace hol

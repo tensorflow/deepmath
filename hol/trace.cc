@@ -61,34 +61,32 @@ std::map<std::string, ConstId> name_const_map;
 std::map<std::string, TermVar> name_var_map;
 std::map<uint64_t, std::tuple<ThmPtr, ThmPtr> > type_defs;
 
-TypePtr get_type(std::istringstream& iss) {
-  std::string part;
-  iss >> part;
-  int64_t i = stoi(part);
+TypePtr get_type(std::ifstream& ic) {
+  int64_t i;
+  ic >> i;
   TypePtr ret = types[std::abs(i)];
   if (i < 0) types[std::abs(i)] = nullptr;
   return ret;
 }
 
-TermPtr get_term(std::istringstream& iss) {
-  std::string part;
-  iss >> part;
-  int64_t i = stoi(part);
+TermPtr get_term(std::ifstream& ic) {
+  int64_t i;
+  ic >> i;
   TermPtr ret = terms[std::abs(i)];
   if (i < 0) terms[std::abs(i)] = nullptr;
   return ret;
 }
 
-ThmPtr get_thm(std::istringstream& iss) {
-  std::string part;
-  iss >> part;
-  int64_t i = stoi(part);
+ThmPtr get_thm(std::ifstream& ic) {
+  int64_t i;
+  ic >> i;
   ThmPtr ret = thms[std::abs(i)];
   if (i < 0) thms[std::abs(i)] = nullptr;
   return ret;
 }
 
-void read_trace(const std::string& fname, bool print_proved, bool debug) {
+void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
+                bool print_types, bool debug) {
   types.push_back(nullptr);
   terms.push_back(nullptr);
   thms.push_back(nullptr);
@@ -108,41 +106,42 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
   declare_const_syntax(const_hilbert, "@");
 
   std::ifstream ic(fname);
-  std::string line, rest, part;
-  while (getline(ic, line)) {
-    if (debug) std::cout << line << std::endl;
-    std::istringstream iss(line.substr(1));
-    if (line[0] == 'a') {
-      iss >> part;
-      if (name_type_map.find(part) == name_type_map.end()) {
-        std::cout << "Unknown type: " << part << std::endl;
+  char tag;
+  std::string line, name, part;
+  while (ic >> tag) {
+    if (debug) std::cout << tag << std::endl;
+    if (tag == 'a') {
+      ic >> name;
+      const auto it = name_type_map.find(name);
+      if (it == name_type_map.end()) {
+        std::cout << "Unknown type: " << name << std::endl;
         break;
       }
-      TypeCon type_con = name_type_map[part];
+      TypeCon type_con = it->second;
       std::vector<TypePtr> args;
       for (uint64_t i = 0; i < get_type_arity(type_con); ++i)
-        args.push_back(get_type(iss));
+        args.push_back(get_type(ic));
       auto ty = mk_type(type_con, args);
       if (debug)
         std::cout << "ty (a) " << types.size() << "\t" << ty << std::endl;
       types.push_back(ty);
-    } else if (line[0] == 't') {
-      iss >> part;
-      if (name_typevar_map.find(part) == name_typevar_map.end())
-        name_typevar_map[part] = part;
-      TypeVar type_var = name_typevar_map[part];
+    } else if (tag == 't') {
+      ic >> name;
+      if (name_typevar_map.find(name) == name_typevar_map.end())
+        name_typevar_map[name] = name;
+      TypeVar type_var = name_typevar_map[name];
       auto ty = mk_vartype(type_var);
       if (debug)
         std::cout << "ty (t) " << types.size() << "\t" << ty << std::endl;
       types.push_back(ty);
-    } else if (line[0] == 'c') {
-      iss >> part;
-      if (name_const_map.find(part) == name_const_map.end()) {
-        std::cout << "Unknown const: " << part << std::endl;
+    } else if (tag == 'c') {
+      ic >> name;
+      if (name_const_map.find(name) == name_const_map.end()) {
+        std::cout << "Unknown const: " << name << std::endl;
         break;
       }
-      ConstId const_id = name_const_map[part];
-      TypePtr type = get_type(iss);
+      ConstId const_id = name_const_map[name];
+      TypePtr type = get_type(ic);
       std::map<TypeVar, TypePtr> subst;
       bool matched = type_match(get_const_type(const_id), type, &subst);
       TermPtr term = nullptr;
@@ -156,38 +155,38 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
         std::cout << "tm (c) " << terms.size() << "\t" << term << " : "
                   << term->type_of() << std::endl;
       terms.push_back(term);
-    } else if (line[0] == 'v') {
-      iss >> part;
-      if (name_var_map.find(part) == name_var_map.end())
-        name_var_map[part] = part;
-      TermVar term_var = name_var_map[part];
-      TypePtr type = get_type(iss);
+    } else if (tag == 'v') {
+      ic >> name;
+      if (name_var_map.find(name) == name_var_map.end())
+        name_var_map[name] = name;
+      TermVar term_var = name_var_map[name];
+      TypePtr type = get_type(ic);
       auto tm = mk_var(term_var, type);
       if (debug)
         std::cout << "tm (v) " << terms.size() << "\t" << tm << " : " << type
                   << std::endl;
       terms.push_back(tm);
-    } else if (line[0] == 'l') {
-      TermPtr var = get_term(iss);
-      TermPtr subterm = get_term(iss);
+    } else if (tag == 'l') {
+      TermPtr var = get_term(ic);
+      TermPtr subterm = get_term(ic);
       TermPtr tm = nullptr;
       if (var) tm = mk_abs(var->dest_var(), subterm);
       if (debug)
         std::cout << "tm (l) " << terms.size() << "\t" << tm << " : "
                   << tm->type_of() << std::endl;
       terms.push_back(tm);
-    } else if (line[0] == 'f') {
-      TermPtr terml = get_term(iss);
-      TermPtr termr = get_term(iss);
+    } else if (tag == 'f') {
+      TermPtr terml = get_term(ic);
+      TermPtr termr = get_term(ic);
       auto tm = mk_comb(terml, termr);
       if (debug)
         std::cout << "tm (f) " << terms.size() << "\t" << tm << " : "
                   << tm->type_of() << std::endl;
       terms.push_back(tm);
-    } else if (line[0] == 'F') {
-      std::string const_name;
-      iss >> const_name;
-      TermPtr term = get_term(iss);
+    } else if (tag == 'F') {
+      string const_name;
+      ic >> const_name;
+      TermPtr term = get_term(ic);
       ThmPtr thm = new_basic_definition(term);
       auto const_id = std::get<0>(thm->concl_->rator()->rand()->dest_const());
       declare_const_syntax(const_id, const_name);
@@ -195,46 +194,53 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
         std::cout << " (F) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
       name_const_map[const_name] = const_id;
-    } else if (line[0] == 'R') {
-      TermPtr term = get_term(iss);
+    } else if (tag == 'R') {
+      TermPtr term = get_term(ic);
       ThmPtr thm = REFL(term);
       if (debug)
         std::cout << " (R) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'C') {
-      ThmPtr thml = get_thm(iss);
-      ThmPtr thmr = get_thm(iss);
+    } else if (tag == 'C') {
+      ThmPtr thml = get_thm(ic);
+      ThmPtr thmr = get_thm(ic);
       ThmPtr thm = MK_COMB(thml, thmr);
       if (debug)
         std::cout << " (C) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'E') {
-      ThmPtr thml = get_thm(iss);
-      ThmPtr thmr = get_thm(iss);
+    } else if (tag == 'E') {
+      ThmPtr thml = get_thm(ic);
+      ThmPtr thmr = get_thm(ic);
       ThmPtr thm = EQ_MP(thml, thmr);
       if (debug)
         std::cout << " (E) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'H') {
-      TermPtr term = get_term(iss);
+      if (print_tokens) {
+        cout << "E";
+        print_training_tokens(cout, thm->concl_, print_types);
+        cout << std::endl;
+      }
+    } else if (tag == 'H') {
+      TermPtr term = get_term(ic);
       ThmPtr thm = ASSUME(term);
       if (debug)
         std::cout << " (H) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'D') {
-      ThmPtr thml = get_thm(iss);
-      ThmPtr thmr = get_thm(iss);
+    } else if (tag == 'D') {
+      ThmPtr thml = get_thm(ic);
+      ThmPtr thmr = get_thm(ic);
       ThmPtr thm = DEDUCT_ANTISYM(thml, thmr);
       if (debug)
         std::cout << " (D) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'B') {
-      TermPtr term = get_term(iss);
+    } else if (tag == 'B') {
+      TermPtr term = get_term(ic);
       ThmPtr thm = BETA(term);
       if (debug)
         std::cout << " (B) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'S') {
+    } else if (tag == 'S') {
+      getline(ic, line);
+      std::istringstream iss(line);
       iss >> part;
       Substitution subst;
       while (!iss.eof()) {
@@ -256,7 +262,9 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
       if (debug)
         std::cout << " (S) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'Q') {
+    } else if (tag == 'Q') {
+      getline(ic, line);
+      std::istringstream iss(line);
       iss >> part;
       std::map<TypeVar, TypePtr> inst;
       while (!iss.eof()) {
@@ -275,35 +283,35 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
       if (debug)
         std::cout << " (Q) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'T') {
-      ThmPtr thml = get_thm(iss);
-      ThmPtr thmr = get_thm(iss);
+    } else if (tag == 'T') {
+      ThmPtr thml = get_thm(ic);
+      ThmPtr thmr = get_thm(ic);
       ThmPtr thm = TRANS(thml, thmr);
       if (debug)
         std::cout << " (T) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'L') {
-      TermPtr term = get_term(iss);
+    } else if (tag == 'L') {
+      TermPtr term = get_term(ic);
       ThmPtr thm = nullptr;
-      if (term) thm = ABS(term->dest_var(), get_thm(iss));
+      if (term) thm = ABS(term->dest_var(), get_thm(ic));
       if (debug)
         std::cout << " (L) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'A') {
-      iss >> part;
-      TermPtr term = get_term(iss);
+    } else if (tag == 'A') {
+      ic >> part;
+      TermPtr term = get_term(ic);
       ThmPtr thm = new_axiom(term);
       if (debug)
         std::cout << " (A) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == 'Y') {
-      std::string type_name, abs_name, rep_name;
-      iss >> type_name;
-      iss >> abs_name;
-      iss >> rep_name;
-      iss >> part;
-      iss >> part;
-      ThmPtr thm = get_thm(iss);
+    } else if (tag == 'Y') {
+      string type_name, abs_name, rep_name;
+      ic >> type_name;
+      ic >> abs_name;
+      ic >> rep_name;
+      ic >> part;
+      ic >> part;
+      ThmPtr thm = get_thm(ic);
       auto defined = new_basic_type_definition(thm);
       name_type_map[type_name] = std::get<0>(defined);
       type_defs[thms.size()] = std::get<2>(defined);
@@ -315,22 +323,43 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
       if (debug)
         std::cout << " (Y) " << thms.size() << "\t" << type_name << std::endl;
       thms.push_back(nullptr);
-    } else if (line[0] == '1') {
-      iss >> part;
+    } else if (tag == '1') {
+      ic >> part;
       ThmPtr thm = std::get<0>(type_defs[std::abs(stoi(part))]);
       if (debug)
         std::cout << " (1) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == '2') {
-      iss >> part;
+    } else if (tag == '2') {
+      ic >> part;
       ThmPtr thm = std::get<1>(type_defs[std::abs(stoi(part))]);
       if (debug)
         std::cout << " (2) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
-    } else if (line[0] == '+') {
-      if (print_proved && line[1] != '!') {  // Human named theorem
-        iss >> part;
-        std::cout << part << " " << thms[thms.size() - 1] << std::endl;
+    } else if (tag == '+') {
+      getline(ic, line);
+      if (print_tokens && thms[thms.size() - 1] &&
+          thms[thms.size() - 1]->hyps_.empty()) {
+        if (line[0] == '!') {
+          cout << '!';
+          print_training_tokens(cout, thms[thms.size() - 1]->concl_,
+                                print_types);
+          cout << std::endl;
+        } else {
+          cout << '+';
+          print_training_tokens(cout, thms[thms.size() - 1]->concl_,
+                                print_types);
+          cout << std::endl;
+        }
+      }
+      if (print_proved && line[0] != '!') {  // Human named theorem
+        std::cout << line << " " << thms[thms.size() - 1] << std::endl;
+      }
+    } else if (tag == '-') {
+      if (print_tokens && thms[thms.size() - 1] &&
+          thms[thms.size() - 1]->hyps_.empty()) {
+        cout << '-';
+        print_training_tokens(cout, thms[thms.size() - 1]->concl_, print_types);
+        cout << std::endl;
       }
     } else {
       std::cout << line << std::endl;
@@ -338,11 +367,11 @@ void read_trace(const std::string& fname, bool print_proved, bool debug) {
     }
     if (thms.size() > 1 && thms[thms.size() - 1] == nullptr &&
         type_defs.find(thms.size() - 1) == type_defs.end()) {
-      std::cout << "Incorrect theorem step " << thms.size() - 1
+      cout << "Incorrect theorem step " << thms.size() - 1
            << " derived from: " << line << std::endl;
       exit(0);
     }
-    if (!debug && !print_proved && thms.size() % 10000 == 0)
+    if (!debug && !print_proved && !print_tokens && thms.size() % 10000 == 0)
       std::cout << "." << std::flush;
   }
 }

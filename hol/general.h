@@ -23,6 +23,12 @@ namespace hol {
 bool type_match(const TypePtr& general_type, const TypePtr& particular_type,
                 std::map<TypeVar, TypePtr>* sofar);
 
+uint64_t arity(TypePtr type);
+
+std::tuple<TermPtr, std::vector<TermPtr> > strip_comb(TermPtr term);
+
+TermPtr strip_forall(TermPtr term);
+
 }  // namespace hol
 
 #endif  // DEEPMATH_HOL_GENERAL_H_

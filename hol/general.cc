@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "hol/general.h"
 
 namespace hol {
@@ -38,6 +40,35 @@ bool type_match(const TypePtr& general_type, const TypePtr& particular_type,
     if (!type_match(gen_vec[i], par_vec[i], sofar)) return false;
   }
   return true;
+}
+
+uint64_t arity(TypePtr type) {
+  uint64_t ret = 0;
+  while (type->is_type() && std::get<0>(type->dest_type()) == type_con_fun) {
+    type = (std::get<1>(type->dest_type()))[1];
+    ret++;
+  }
+  return ret;
+}
+
+const ConstId const_forall = 5;
+
+TermPtr strip_forall(TermPtr term) {
+  while (term->is_comb() && term->rator()->is_const() &&
+         term->rand()->is_abs() &&
+         std::get<0>(term->rator()->dest_const()) == const_forall)
+    term = std::get<2>(term->rand()->dest_abs());
+  return term;
+}
+
+std::tuple<TermPtr, std::vector<TermPtr>> strip_comb(TermPtr term) {
+  std::vector<TermPtr> ret;
+  while (term->is_comb()) {
+    ret.push_back(term->rand());
+    term = term->rator();
+  }
+  std::reverse(ret.begin(), ret.end());
+  return std::make_tuple(term, ret);
 }
 
 }  // namespace hol

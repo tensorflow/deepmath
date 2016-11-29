@@ -184,7 +184,7 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
                   << tm->type_of() << std::endl;
       terms.push_back(tm);
     } else if (tag == 'F') {
-      string const_name;
+      std::string const_name;
       ic >> const_name;
       TermPtr term = get_term(ic);
       ThmPtr thm = new_basic_definition(term);
@@ -215,9 +215,9 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
         std::cout << " (E) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
       if (print_tokens) {
-        cout << "E";
-        print_training_tokens(cout, thm->concl_, print_types);
-        cout << std::endl;
+        std::cout << "E";
+        print_training_tokens(std::cout, thm->concl_, print_types);
+        std::cout << std::endl;
       }
     } else if (tag == 'H') {
       TermPtr term = get_term(ic);
@@ -305,7 +305,7 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
         std::cout << " (A) " << thms.size() << "\t" << thm << std::endl;
       thms.push_back(thm);
     } else if (tag == 'Y') {
-      string type_name, abs_name, rep_name;
+      std::string type_name, abs_name, rep_name;
       ic >> type_name;
       ic >> abs_name;
       ic >> rep_name;
@@ -340,15 +340,15 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
       if (print_tokens && thms[thms.size() - 1] &&
           thms[thms.size() - 1]->hyps_.empty()) {
         if (line[0] == '!') {
-          cout << '!';
-          print_training_tokens(cout, thms[thms.size() - 1]->concl_,
+          std::cout << '!';
+          print_training_tokens(std::cout, thms[thms.size() - 1]->concl_,
                                 print_types);
-          cout << std::endl;
+          std::cout << std::endl;
         } else {
-          cout << '+';
-          print_training_tokens(cout, thms[thms.size() - 1]->concl_,
+          std::cout << '+';
+          print_training_tokens(std::cout, thms[thms.size() - 1]->concl_,
                                 print_types);
-          cout << std::endl;
+          std::cout << std::endl;
         }
       }
       if (print_proved && line[0] != '!') {  // Human named theorem
@@ -357,9 +357,10 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
     } else if (tag == '-') {
       if (print_tokens && thms[thms.size() - 1] &&
           thms[thms.size() - 1]->hyps_.empty()) {
-        cout << '-';
-        print_training_tokens(cout, thms[thms.size() - 1]->concl_, print_types);
-        cout << std::endl;
+        std::cout << '-';
+        print_training_tokens(std::cout, thms[thms.size() - 1]->concl_,
+                              print_types);
+        std::cout << std::endl;
       }
     } else {
       std::cout << line << std::endl;
@@ -367,8 +368,8 @@ void read_trace(const std::string& fname, bool print_proved, bool print_tokens,
     }
     if (thms.size() > 1 && thms[thms.size() - 1] == nullptr &&
         type_defs.find(thms.size() - 1) == type_defs.end()) {
-      cout << "Incorrect theorem step " << thms.size() - 1
-           << " derived from: " << line << std::endl;
+      std::cout << "Incorrect theorem step " << thms.size() - 1
+                << " derived from: " << line << std::endl;
       exit(0);
     }
     if (!debug && !print_proved && !print_tokens && thms.size() % 10000 == 0)

@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+
+import sys
+if sys.version < '2.6':
+    print "This script is not tested on Python versions below 2.6"
+    sys.exit(1)
+
+import os
+import re
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Generic helpers:
+
+
+def pr(text):
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
+def abort(message):
+    pr("ERROR! %s\n" % message)
+    exit(255)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Main:
+
+
+# Input will be on form:
+#
+#   g++ -Lzzroot/lib/mach/quick -Wl,-whole-archive zzroot/Netlist/out/mach/quick/Main_netlist.o
+#       zzroot/lib/mach/quick/libZZ_Netlist.a -lZZ_Prelude -lZZ_CmdLine -Wl,-no-whole-archive
+#       -lrt -ldl -lz -o zzroot/Netlist/out/mach/quick/netlist.exe
+#
+# where anything between '-Wl,whole-archive' and '-Wl,no-whole-archive' is treated as a ZZ
+# library or object file and inspected.
+
+
+gdep_tmpfile = "__zz_gdep__" + str(os.getpid()) + "__.cc";
+
+
+def parse_cmdline(args):
+    new_cmdline = []
+    zz_objs = []
+    zz_libs = []
+    lpath = []
+    in_zz_region = False
+
+    for a in args:
+        if a.startswith("-Wl,-whole-archive") or a.startswith("-Wl,--start-group"):
+            new_cmdline.append(gdep_tmpfile)
+            in_zz_region = True
+        elif a.startswith("-Wl,-no-whole-archive") or a.startswith("-Wl,--end-group"):
+            in_zz_region = False
+        else:
+            new_cmdline.append(a)
+            if a.startswith("-L"):
+                lpath.append(a[2:])
+            elif in_zz_region:
+                if a.startswith("-l"):
+                    zz_libs.append(a[2:])
+                elif a.endswith(".o") or a.endswith(".a"):
+                    zz_objs.append(a)
+
+    for a in zz_libs:
+        for p in lpath:
+            fullname = p + "/lib" + a + ".a";
+            if os.path.exists(fullname):
+                zz_objs.append(fullname)
+                break
+        else:
+            abort("Couldn't find library: %s" % a)
+
+    return ("g++ " + " ".join(new_cmdline), zz_objs)
+
+
+def build_stub(objs, output_filename):
+    # Collect symbols:
+    syms = []
+    r = re.compile(r".*((ZZ_Initializer|ZZ_Finalizer)_.*)_instance.")
+#    print "GLOBAL DEP COMMAND:", "nm 2>/dev/null " + " ".join(objs)
+    with os.popen("nm 2>/dev/null " + " ".join(objs), "r") as f:
+        for line in f:
+            m = r.match(line)
+            if m:
+                syms.append(m.group(1))
+
+    # Create stub file:
+    with open(output_filename, "w") as out:
+        out.write("namespace ZZ {\n\n")
+        for s in syms:
+            if s.startswith("ZZ_Initializer_"):
+                out.write("struct ZZ_Initializer_%s { ZZ_Initializer_%s(); }; extern ZZ_Initializer_%s ZZ_Initializer_%s_instance;\n" % (s[15:], s[15:], s[15:], s[15:]))
+            elif s.startswith("ZZ_Finalizer_"):
+                out.write("struct ZZ_Finalizer_%s { ZZ_Finalizer_%s(); }; extern ZZ_Finalizer_%s ZZ_Finalizer_%s_instance;\n" % (s[13:], s[13:], s[13:], s[13:]))
+            else: assert False
+
+        out.write("\nint ZZ_Lib_ForceDependencies()\n{\n  int x = 0;\n")
+        for s in syms:
+            out.write("  x += (int)((char*)(void*)&%s_instance - (char*)0);\n" % s)
+        out.write("  return x;\n}\n\n} // End namespace ZZ\n");
+
+
+def main():
+#    print "ARGS:", sys.argv[1:]
+    (cmd, objs) = parse_cmdline(sys.argv[1:])
+    build_stub(objs, gdep_tmpfile)
+#    print "RUNNING:", cmd
+    ret = os.system(cmd)
+    os.remove(gdep_tmpfile)
+    sys.exit(0 if ret == 0 else 1)
+
+
+main()

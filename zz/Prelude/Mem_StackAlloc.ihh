@@ -1,0 +1,126 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Mem_StackAlloc.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Allocate memory in a stack like fashion.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//| Chunks of 'cap' elements (default 10000) are allocated, then used up in a stack like fashion,
+//| i.e. an allocation is done by incrementing the pointer to the top of the stack. Large 
+//| allocations are passed on to malloc (default >1000 elements).
+//|________________________________________________________________________________________________
+
+
+// 'cap' is capacity of a memory chunk, 'lim' is malloc limit ('malloc()' will be used for larger
+// sizer than this). These types are intentionally 32-bit, it doesn't make sense to use chunks
+// of size >4 GB, so let's save some space.
+//
+template<class T, uint cap=10000, uint lim=cap/10>
+class StackAlloc {
+    struct Block {
+        T*      data;
+        Block*  next;
+        uint    final_index : 31;    // (for 'report()' only)
+        bool    singleton   : 1;     // (ditto)
+        Block(T* data_, Block* next_, uint final_index_, bool singleton_) : data(data_), next(next_), final_index(final_index_), singleton(singleton_) {}
+    };
+
+    T*      data;
+    uint    index;
+    Block*  list;
+
+public:
+    typedef T Elem;
+
+    StackAlloc() : data(NULL), index(cap), list(NULL) { static_assert_(lim <= cap); }
+   ~StackAlloc() { clear(); }
+
+    T*   alloc (size_t n_elems = 1);            // -- Allocate one or more elements.
+    void clear ();                              // -- Free all allocations.
+    void moveTo(StackAlloc<T,cap,lim>& dest);   // -- Migrate this 'StackAlloc' object onto another (which is first disposed).
+
+    // Debug:
+    void report();
+};
+
+
+//=================================================================================================
+// Implementation:
+
+
+template<class T, uint cap, uint lim>
+inline T* StackAlloc<T,cap,lim>::alloc(size_t n_elems)
+{
+    T* result;
+    if (n_elems > lim){
+        result = xmalloc<T>(n_elems);
+        list = new Block(result, list, n_elems, true);
+
+    }else{
+        if (n_elems + index > cap){
+            list  = new Block(data, list, index, false);
+            data  = xmalloc<T>(cap);
+            index = 0;
+        }
+        result = data + index;
+        index += n_elems;
+    }
+    return result;
+}
+
+
+template<class T, uint cap, uint lim>
+inline void StackAlloc<T,cap,lim>::clear()
+{
+    xfree(data);
+    data = NULL;
+    index = cap;
+
+    while (list != NULL){
+        xfree(list->data);
+        Block* next = list->next;
+        delete list;
+        list = next;
+    }
+}
+
+
+template<class T, uint cap, uint lim>
+inline void StackAlloc<T,cap,lim>::moveTo(StackAlloc<T,cap,lim>& dest)
+{
+    dest.clear();
+    dest.data  = data;
+    dest.index = index;
+    dest.list  = list;
+    data  = NULL;
+    index = cap;
+    list  = NULL;
+}
+
+
+//=================================================================================================
+// Debug:
+
+
+template<class T, uint cap, uint lim>
+inline void StackAlloc<T,cap,lim>::report()
+{
+    printf("StackAlloc at %p:\n", this);
+    printf("  sizeof(T) = %u\n", uint(sizeof(T)));
+    printf("  cap       = %u\n", cap);
+    printf("  lim       = %u\n", lim);
+    printf("\n");
+    printf("  current data usage: %u elements (= %.2f %%)\n", index, double(index) / cap * 100);
+
+    Block* p = list;
+    int    n = 0;
+    while (p != NULL){
+        printf("  block %d usage: %s, %u elements (= %.2f %%)\n", n, p->singleton ? "single" : "multi", p->final_index, p->singleton ? 100 : (double(p->final_index) / cap * 100));
+        n++;
+        p = p->next;
+    }
+}

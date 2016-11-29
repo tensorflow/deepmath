@@ -1,0 +1,134 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : String.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : String class with copy semantics (for filenames etc.).
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//| A 'String' derives from the class 'Out', which gives it all the capabilities of an output 
+//| stream. In particular you can append to a string by using the '+=' operator. The underlying 
+//| vector is reached by method 'vec()', but all vector operations are also mirrored for 
+//| convenience.
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+class String : public Out {
+    void init(cchar* data_, uind sz) { vec().setSize(sz); memcpy(vec().base(), data_, sz); }
+
+public:
+  //________________________________________
+  //  Constructors: 
+
+    // NOTE! All constructors have copying semantics.
+    String() {}
+    String(const String& src) { init(src.vec().base(), src.vec().size()); }
+
+    String(const Vec<char>&    src) { init(src.base(), src.size()); }
+    String(const Vec<cchar>&   src) { init(src.base(), src.size()); }
+    String(const Array<char>&  src) { init(src.base(), src.size()); }
+    String(const Array<cchar>& src) { init(src.base(), src.size()); }
+    String(char*  text) { uind len = strlen(text); init(text, len); }
+    String(cchar* text) { uind len = strlen(text); init(text, len); }
+
+    String& operator=(const String& src) { src.vec().copyTo(vec()); return *this; }
+
+    operator Vec<char>&() { return vec(); }
+
+  //________________________________________
+  //  Vector interface:
+
+    // Allocation control:
+    void     reserve(uind min_cap) { vec().reserve(min_cap); }
+    void     trim   ()             { vec().trim(); }
+    void     trimTo (uind max_cap) { vec().trimTo(max_cap); }
+
+    // Underlying array:
+    const char*  base    () const { return vec().base(); }
+    char*        base    ()       { return vec().base(); }
+    Array<char>  release ()       { return vec().release(); }
+    uind         capacity() const { return vec().capacity(); }
+    Array<cchar> slice   (uind start = 0)       const { return vec().slice(start); }
+    Array<cchar> slice   (uind start, uind end) const { return vec().slice(start, end); }
+    Array<char>  slice   (uind start = 0)             { return vec().slice(start); }
+    Array<char>  slice   (uind start, uind end)       { return vec().slice(start, end); }
+
+    // Size operations:
+    uind     size    () const               { return vec().size(); }
+    void     pop     ()                     { vec().pop(); }
+    void     shrinkTo(uind size)            { vec().shrinkTo(size); }
+    void     growTo  (uind size)            { vec().growTo(size); }
+    void     growTo  (uind size, char pad)  { vec().growTo(size, pad); }
+    void     setSize (uind size)            { vec().setSize(size); }
+    void     setSize (uind size, char pad)  { vec().setSize(size, pad); }
+    void     clear   (bool dealloc = false) { vec().clear(dealloc); }
+
+    // Stack interface:
+    void        push  ()          { vec().push(); }
+    void        push  (char elem) { vec().push(elem); }
+    void        pushQ (char elem) { vec().pushQ(elem); }
+    const char& last  () const    { return vec().last(); }
+    char&       last  ()          { return vec().last(); }
+    const char& end_  () const    { return vec().end_(); }
+    char&       end_  ()          { return vec().end_(); }
+
+    // Indexing:
+    const char& operator[](uind i) const     { return vec().operator[](i); }
+    char&       operator[](uind i)           { return vec().operator[](i); }
+    const char& get       (uind i) const     { return vec().get(i); }
+    char&       get       (uind i)           { return vec().get(i); }
+    char&       operator()(uind i)           { return vec().operator()(i); }
+    char&       operator()(uind i, char pad) { return vec().operator()(i, pad); }
+
+    //  Copying/moving:
+    void copyTo(Vec<char>& dst) const { vec().copyTo(dst); }
+    void moveTo(Vec<char>& dst)       { vec().moveTo(dst); }
+
+  //________________________________________
+  //  String methods:
+
+    char* c_str() const { String& s = const_cast<String&>(*this); s.vec().push(0); s.vec().pop(); return s.vec().base(); }
+        // -- here we rely on the fact that 'Vec' does not shrink (so the pushed '\0' will be there).
+
+    String operator+(const String& other) const {
+        String s;
+        s.growTo(size() + other.size());
+        uind i;
+        for (i = 0; i < size(); i++) s[i] = get(i);
+        for (uind j = 0; j < other.size(); j++, i++) s[i] = other[j];
+        return s; }
+
+    bool operator==(const String& other) const { return  vecEqual   (vec(), other.vec()); }
+    bool operator!=(const String& other) const { return !vecEqual   (vec(), other.vec()); }
+    bool operator< (const String& other) const { return  vecLessThan(vec(), other.vec()); }
+    bool operator>=(const String& other) const { return !vecLessThan(vec(), other.vec()); }
+    bool operator> (const String& other) const { return  vecLessThan(other.vec(), vec()); }
+    bool operator<=(const String& other) const { return !vecLessThan(other.vec(), vec()); }
+
+    String sub(uind start, uind end) const { return String(ZZ::slice(get(start), get(end))); }
+    String sub(uind start)           const { return sub(start, size()); }
+        // -- returns interval '[start,end['
+
+  #if (__cplusplus >= 201103L)
+    cchar* end   (uind i = 0) const { return vec().end(); }
+    char*  end   (uind i = 0)       { return vec().end(); }
+    cchar* begin () const           { return vec().begin(); }
+    char*  begin ()                 { return vec().begin(); }
+  #endif
+};
+
+// Hashing:
+template<> fts_macro uint64 hash_<String>(const String& s) { return defaultHash(s.vec()); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

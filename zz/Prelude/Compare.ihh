@@ -1,0 +1,218 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Compare.ihh
+//| Module      : Prelude
+//| Description : Define a default "less than" template class + min and max operations.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Auto-generate all comparison operators from '<' and '==':
+
+
+template<class T> macro bool operator!=(const T& x, const T& y) { return !(x == y); }
+template<class T> macro bool operator> (const T& x, const T& y) { return y < x;     }
+template<class T> macro bool operator<=(const T& x, const T& y) { return !(y < x);  }
+template<class T> macro bool operator>=(const T& x, const T& y) { return !(x < y);  }
+    // -- NOTE! We intentionally don't use a second type 'S' for 'y'; this would catch too many
+    // cases.
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Default 'LessThan' classes:
+
+
+// A 'LessThan' class should define:
+//   - The type 'Key'
+//   - A method 'bool operator()(Key x, Key y)' returning 'x < y'.
+
+
+// Provide a standard '<'-class for use as default template parameter.
+template<class T> struct LessThan_default {
+    typedef T Key;
+    bool operator()(const Key& x, const Key& y) const  { return x < y; } };
+
+template<> struct LessThan_default<cchar*> {    // (default to 'strcmp()' for 'char*' and 'const char*')
+    typedef cchar* LT;
+    bool operator()(cchar* x, cchar* y) const  { return strcmp(x, y) < 0; } };
+
+template<> struct LessThan_default<char*> {
+    typedef char* Key;
+    bool operator()(char*  x, char*  y) const  { return strcmp(x, y) < 0; } };
+
+template<template<class> class V, class T>      // (default to lexicographical order for array types)
+struct LessThan_default<V<T> > {
+    typedef V<T> Key;
+    bool operator()(const V<T>& x, const V<T>& y) const {
+        for (uind i = 0; i < y.size(); i++)
+            if (i == x.size() || x[i] < y[i])
+                return true;
+            else if (y[i] < x[i])
+                return false;
+        return false;
+    }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Reverse combinator for 'LessThan'-classes:
+
+
+template<class LT>
+struct LessThan_reverse {
+    typedef typename LT::Key Key;
+    LT  lt;
+    LessThan_reverse() : lt() {}
+    LessThan_reverse(LT lt_) : lt(lt_) {}
+    bool operator()(const Key& x, const Key& y) const { return lt(y, x); }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// 'LessThan' through applying projection function (then using '<'):
+
+
+template<class Proj, class Key_ = typename Proj::Key>
+struct LessThan_proj {
+    typedef Key_ Key;
+    const Proj& proj;
+    LessThan_proj() {}
+    LessThan_proj(const Proj& p) : proj(p) {}
+    bool operator()(const Key& x, const Key& y) const { return proj(x) < proj(y); }
+};
+
+template<class Proj>
+LessThan_proj<Proj> proj_lt(const Proj& p) {
+    return LessThan_proj<Proj>(p); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Flipping lexicographical order for pair type 'K':
+
+
+template<class K>
+struct RevPair_lt {
+    typedef K Key;
+    bool operator()(const Key& x, const Key& y) const {
+        return x.snd < y.snd || (x.snd <= y.snd && x.fst < y.fst);
+    }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Min/Max:
+
+
+template <class T>
+macro const T& min_(const T& x, const T& y) {       // -- 'min' and 'max' are taken, so add '_'...
+    return (y < x) ? y : x; }
+
+
+template <class T>
+macro const T& max_(const T& x, const T& y) {
+    return (x < y) ? y : x;}
+
+
+template <class T, class T_compatible>
+macro bool newMin(T& x, T_compatible y) {
+    if (y < x){
+        x = y;
+        return true;
+    }else
+        return false; }
+
+
+template <class T, class T_compatible>
+macro bool newMax(T& x, T_compatible y) {
+    if (x < y){
+        x = y;
+        return true;
+    }else
+        return false; }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Conditional operations:
+
+
+// If 'y' is considered TRUE inside an 'if' statement, assign 'x' to it and return TRUE.
+template<class T, class T_compatible>
+macro bool condAssign(T& x, const T_compatible& y)
+{
+    if (y){
+        x = y;
+        return true;
+    }else
+        return false;
+}
+
+
+template<class T>
+void condDelete(T* ptr)
+{
+    if (ptr) delete ptr;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Make index:
+
+
+// Classes like 'IntMap' allows the index type to be a non-integer. This class serves as the
+// default for converting the index type to an unsigned integer. You can either specialize it for
+// your types, or pass an explicit template parameter to 'IntMap'.
+template<class Key_>
+struct MkIndex_default {
+    typedef Key_ Key;
+
+    uind operator()(const Key& x) const { return uind(x); }
+        // -- This operator HAS to be defined for a 'MkIndex' template paramter.
+
+    Key inv(uind i) const { return Key(i); }
+        // -- This "inverse" function MAY be defined, providing extra functionality for the
+        // template class using the 'MkIndex' as argument.
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Map normalizer: (used in conjunction with "Make index")
+
+
+// A map normalizer should implement the following interface:
+//
+//     struct MapNorm {
+//         typedef ... Key;
+//         typedef ... Value;
+//         typedef ... RetValue;
+//         Value get(Key key, Value val) const;
+//         bool  isNormal(Key key)
+//     };
+//
+// where 'RetValue' is either 'Value' or 'const Value&'.
+
+
+template<class MkIndex, class Value_>
+struct MapNorm_default {
+    typedef typename MkIndex::Key Key;
+    typedef Value_                Value;
+    typedef const Value_&         RetValue;
+
+    RetValue get(Key, RetValue val) const { return val; }
+        // -- the default normalizer uses 'const Value&' to allow for 'Vec<T>' and other
+        // non-copyable datatypes. For most other definitions of 'get()', references
+        // doesn't make sense since the value is modified.
+
+    bool isNormal(Key) const { return true; }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

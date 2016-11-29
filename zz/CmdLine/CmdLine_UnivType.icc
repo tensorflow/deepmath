@@ -1,0 +1,62 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : CmdLine_UnivType.icc
+//| Author(s)   : Niklas Een
+//| Module      : CmdLine
+//| Description : Functions for CLI's universal value and signature.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Signatures:
+
+
+void dispose(CLI_Sig sig)
+{
+    if (sig.sub){
+        for (uind i = 0; i < sig.sub->size(); i++) dispose((*sig.sub)[i]);
+        delete sig.sub; }
+
+    if (sig.type == cli_Enum)
+        delete sig.enum_range;
+
+    if (sig.type == cli_ERROR && sig.error_msg)
+        delete sig.error_msg;
+}
+
+
+static
+CLI_Sig CLI_Sig_error(String msg) {
+    CLI_Sig tmp;
+    tmp.error_msg = new String(msg);
+    return tmp; }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Values:
+
+
+void dispose(CLI_Val val)
+{
+    if (val.sub){
+        for (uind i = 0; i < val.sub->size(); i++) dispose((*val.sub)[i]);
+        delete val.sub; }
+
+    if (val.type == cli_Enum)
+        delete val.enum_range;
+
+    if (val.type == cli_ERROR && val.error_msg)
+        delete val.error_msg;
+}
+
+
+static
+CLI_Val CLI_Val_error(String msg) {
+    CLI_Val tmp;
+    tmp.error_msg = new String(msg);
+    return tmp; }

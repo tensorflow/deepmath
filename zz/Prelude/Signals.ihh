@@ -1,0 +1,77 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Signals.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Signals and exit handling.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Program exit handling:
+
+
+extern bool silent_interrupt;   // Change to 'true' to suppress '*** INTERRUPTED ***' output.
+extern bool silent_crash;       // Change to 'true' to suppress '*** CRASHED ***' output.
+
+
+const uint x_Normal    = 1;
+const uint x_Interrupt = 2;
+const uint x_Crash     = 4;
+
+const uint x_NoCrash   = 3;
+const uint x_Abnormal  = 6;
+const uint x_Always    = 7;
+
+typedef void (*ExitFun0)();
+typedef void (*ExitFun1)(void* data);
+typedef void (*ExitFun2)(void* data, int exitcode);
+
+
+struct ExitFun {
+    uint    type;
+    union {
+        ExitFun0   fun0;
+        ExitFun1   fun1;
+        ExitFun2   fun2;
+    };
+    ExitFun()           : type(UINT_MAX), fun0(NULL) {}
+    ExitFun(ExitFun0 f) : type(0), fun0(f) {}
+    ExitFun(ExitFun1 f) : type(1), fun1(f) {}
+    ExitFun(ExitFun2 f) : type(2), fun2(f) {}
+
+    void operator()(void* data, int exitcode) {
+        if (type == 0)
+            fun0();
+        else if (type == 1)
+            fun1(data);
+        else assert(type == 2),
+            fun2(data, exitcode);
+    }
+};
+
+
+void atExit(uint mask, ExitFun fun, void* data = NULL);
+    // -- register an exit function; 'mask' determines under which conditions it will be run.
+    // NOTE! Will be run AFTER ZZ-framework has been closed down, so must only use simple Unix
+    // primitives (not even 'printf()' is safe).
+
+void flushAtExits(uint mask = x_Normal, uint exit_code = 0);
+    // -- Call all exit functions and unregister them. 'mask' should be one of: x_Normal,
+    // x_Interrupt, x_Crash.
+
+macro void setupSignalHandlers() { atExit(x_Abnormal, nop<>); }
+    // -- Installs signal handlers for SIGINT, SIGHUP, SIGTERM, SIGABRT, SIGSEGV, SIGBUG
+    // and exists program a little bit nicer. Function 'atExit()' will also install 
+    // these handlers on its first call.
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

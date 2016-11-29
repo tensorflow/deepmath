@@ -1,0 +1,636 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Console.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Adds some niceties to the console output in a platform independent way.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//| The implementation is complicated by the fact that sometimes 'stdout' is connected to the tty,
+//| sometimes 'stderr', sometimes both.
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+static void flushChars(bool use_stdout);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// State:
+
+
+ZZ_Global_Lock(console);
+
+
+// Stream state:
+//
+struct StrState {
+    uint      attr;         // -- bit0=bold, bit1=emphasize, bit2=underscore, bit3=reverse
+    uint      indent;       // -- number of spaces to indent all output
+    uint      column;       // -- what column are we at?
+    uint      cr_len;       // -- length of current line at point of '\r' (carrige-return)
+    Vec<uint> marks;        // -- stack of marks for '\r' (used for progress bars etc.)
+    Vec<char> buf;          // -- characters not yet flushed
+
+    StrState() : attr(0), indent(0), column(0), cr_len(0) {}
+};
+
+static StrState ss[2];      // -- index 1 for 'stdout', 0 for 'stderr'
+
+
+// Console state:
+//
+static bool  use_ansi  [2];     // -- index 1 for 'stdout', 0 for 'stderr' (same for below arrays).
+static lbool force_ansi[2];     // -- if TRUE, ANSI codes will be used on non-terminals as well.
+static bool  is_console[2];     // -- is stdout/stderr connected to the console? (affects flushing and handling of '\r')
+static uint  con_type  [2];     // -- for Windows only; is it a pipe or a character device?
+
+static bool was_stdout;         // -- was last console output to 'stdout' (else 'stderr').
+
+static Vec<ushort> fbuf;        // -- temporary buffer for 'flushChars()'.
+static Vec<ushort> out_buf[2];  // -- output buffer for streams connected to a file
+
+#if defined(_MSC_VER)
+static Vec<TCHAR> win_token;    // -- temporary used in 'winFlush()'
+#endif
+
+static ConsoleWriter* con_writer[2];
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Default console writer (for 'ansiFlush()'):
+
+
+struct DefaultConsoleWriter : ConsoleWriter {
+    FILE* out;
+    DefaultConsoleWriter(FILE* out_) : out(out_) {}
+
+    void putChar(char c) { fputc(c, out); }
+    void flush()         { fflush(out); }
+};
+
+DefaultConsoleWriter* default_con_stdout;
+DefaultConsoleWriter* default_con_stderr;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Configuration:
+
+
+#define BOLD  1
+#define EMPH  2
+#define UNDER 4
+#define REV   8
+
+static cchar* csi_bold;
+static cchar* csi_emph;
+static cchar* csi_under;
+static cchar* csi_rev;
+
+#if defined(_MSC_VER)
+    #define fg_WHITE  (FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED)
+    #define fg_GREEN  FOREGROUND_GREEN
+    #define fg_CYAN   (FOREGROUND_GREEN | FOREGROUND_BLUE)
+    #define fg_RED    FOREGROUND_RED
+    #define fg_YELLOW (FOREGROUND_GREEN | FOREGROUND_RED)
+    #define fg_BOLD   FOREGROUND_INTENSITY
+    #define bg_WHITE  (BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED)
+    #define bg_GREEN  BACKGROUND_GREEN
+    #define bg_CYAN   (BACKGROUND_GREEN | BACKGROUND_BLUE)
+    #define bg_RED    BACKGROUND_RED
+    #define bg_YELLOW (BACKGROUND_GREEN | BACKGROUND_RED)
+    #define bg_BOLD   BACKGROUND_INTENSITY
+#endif
+
+static uint win_attr[16];
+
+
+ZZ_Initializer(console, -10052)
+{
+    use_ansi  [0] = true;
+    use_ansi  [1] = true;
+    force_ansi[0] = l_Undef;
+    force_ansi[1] = l_Undef;
+
+    was_stdout = true;
+
+    csi_bold  = ";1";
+    csi_emph  = ";36";      // 32/36=green/cyan (default),  34=blue (alt.),   31=red (better alt.?)
+    csi_under = ";4";
+    csi_rev   = ";7";
+
+#if defined(_MSC_VER)
+    win_attr[ 0] = fg_WHITE;
+    win_attr[ 1] = fg_WHITE | fg_BOLD;
+    win_attr[ 2] = fg_CYAN;
+    win_attr[ 3] = fg_CYAN | fg_BOLD;
+    win_attr[ 4] = fg_RED;
+    win_attr[ 5] = fg_RED | fg_BOLD;
+    win_attr[ 6] = fg_YELLOW;
+    win_attr[ 7] = fg_YELLOW | fg_BOLD;
+    win_attr[ 8] = bg_WHITE;
+    win_attr[ 9] = bg_WHITE | bg_BOLD;
+    win_attr[10] = bg_CYAN;
+    win_attr[11] = bg_CYAN | bg_BOLD;
+    win_attr[12] = bg_RED;
+    win_attr[13] = bg_RED | bg_BOLD;
+    win_attr[14] = bg_YELLOW;
+    win_attr[15] = bg_YELLOW | bg_BOLD;
+#else
+    for (uint i = 0; i < 16; i++) win_attr[i] = 0;
+#endif
+
+    cchar* opt = getenv("ZZ_ANSI");
+    if (opt && strcmp(opt, "off") == 0){
+        force_ansi[0] = force_ansi[1] = l_False;
+        use_ansi  [0] = use_ansi  [1] = false;
+    }else if (opt && strcmp(opt, "on") == 0){
+        force_ansi[0] = force_ansi[1] = l_True;
+        use_ansi  [0] = use_ansi  [1] = true;
+    }
+
+    opt = getenv("ZZ_ANSI_STDOUT");
+    if (opt && strcmp(opt, "off") == 0){
+        force_ansi[1] = l_False;
+        use_ansi  [1] = false;
+    }else if (opt && strcmp(opt, "on") == 0){
+        force_ansi[1] = l_True;
+        use_ansi  [1] = true;
+    }
+
+    opt = getenv("ZZ_ANSI_STDERR");
+    if (opt && strcmp(opt, "off") == 0){
+        force_ansi[0] = l_False;
+        use_ansi  [0] = false;
+    }else if (opt && strcmp(opt, "on") == 0){
+        force_ansi[0] = l_True;
+        use_ansi  [0] = true;
+    }
+
+    opt = getenv("ZZ_ANSI_STYLE");
+    if (opt && strcmp(opt, "alt") == 0){
+        csi_emph = ";34";
+        for (uint i = 0; i <  8; i++) win_attr[i] ^= 0xF7;
+        for (uint i = 8; i < 16; i++) win_attr[i] ^= 0x7F;
+    }
+
+    default_con_stdout = new DefaultConsoleWriter(stdout);
+    default_con_stderr = new DefaultConsoleWriter(stderr);
+    con_writer[0] = default_con_stderr;
+    con_writer[1] = default_con_stdout;
+}
+
+
+ZZ_Finalizer(console, -10052)
+{
+    delete default_con_stdout;
+    delete default_con_stderr;
+}
+
+
+void useAnsiStdOut(bool value) {
+    if (force_ansi[0] == l_False)
+        value = false;
+    if (use_ansi[0] != value){
+        std_out.flush();
+        use_ansi[0] = value; }
+}
+
+
+void useAnsiStdErr(bool value) {
+    if (force_ansi[1] == l_False)
+        value = false;
+    if (use_ansi[1] != value){
+        std_err.flush();
+        use_ansi[1] = value; }
+}
+
+
+void useAnsi(bool value) {
+    useAnsiStdOut(value);
+    useAnsiStdErr(value); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Handling of stdin/stdout:
+
+
+ZZ_Initializer(console_putChar, -10051)
+{
+    consoleReconnected(true);
+    consoleReconnected(false);
+}
+
+
+ZZ_Finalizer(console_putChar, -10051)
+{
+    consoleFlush(true);
+    consoleFlush(false);
+}
+
+
+void consoleReconnected(bool stdout_)
+{
+  #if !defined (_MSC_VER)
+    if (stdout_){
+        is_console[1] = (force_ansi[1] == l_True) || isatty(1);
+        use_ansi[1] = is_console[1] && !(force_ansi[1] == l_False);
+        con_type[1] = 0;
+    }else{
+        is_console[0] = (force_ansi[0] == l_True) || isatty(2);
+        use_ansi[0] = is_console[0] && !(force_ansi[0] == l_False);
+        con_type[0] = 0;
+    }
+
+  #else
+    if (stdout_){
+        con_type[1] = GetFileType(GetStdHandle(STD_OUTPUT_HANDLE));
+        is_console[1] = (force_ansi[1] == l_True) || (con_type[1] == FILE_TYPE_CHAR) || (con_type[1] == FILE_TYPE_PIPE);
+    }else{
+        con_type[0] = GetFileType(GetStdHandle(STD_ERROR_HANDLE));
+        is_console[0] = (force_ansi[0] == l_True) || (con_type[0] == FILE_TYPE_CHAR) || (con_type[0] == FILE_TYPE_PIPE);
+    }
+  #endif
+
+    con_writer[stdout_] = stdout_ ? default_con_stdout : default_con_stderr;
+}
+
+
+void consoleFlush(bool stdout_)
+{
+    if (ss[stdout_].buf.size() > 0){
+        ss[stdout_].buf.push('\f');
+        flushChars(stdout_);
+        if (ss[stdout_].column > 0){
+            ss[stdout_].buf.push('\n');
+            flushChars(stdout_);
+        }
+    }
+}
+
+
+// If 'is_console' is true, output will be flushed more frequently and may contain '\b' for 
+// erasing old output.
+void redirectConsole(bool stdout_, ConsoleWriter& wr, bool use_ansi_, bool is_console_)
+{
+    consoleFlush(stdout_);
+    use_ansi[stdout_]   = use_ansi_;
+    is_console[stdout_] = is_console_;
+    con_writer[stdout_] = &wr;
+  #if defined(_MSC_VER)
+    con_type[stdout_]   = FILE_TYPE_PIPE;   // -- for Windows, make sure 'ansiFlush()' is called
+  #endif
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// ANSI formatting:
+
+
+// Optimize the string 'data' by collecting backspaces to the beginning and end of the string.
+// IMPORTANT: We assume that backspace results in an empty cell with default attribute. An
+// actual '\b' will leave the cell untouched, but the operations we expose through the control
+// codes shouldn't allow you to explore this in any way (so the assumption should not make
+// any difference).
+void optimizeFlushData(Vec<ushort>& data)
+{
+    // Temporaries:
+    static Vec<Array<ushort> > lines;
+    static Vec<ushort> fwd;
+    static Vec<ushort> bwd;
+    static Vec<ushort> new_data;
+
+    // Split 'data' on newline:
+    static const ushort seps[2] = { '\n', 0 };
+    strictSplitArray(slice(data), slice(seps[0], seps[1]), lines);
+
+    // Optimize:
+    new_data.clear();
+    for (uind n = 0; n < lines.size(); n++){
+        Array<ushort> line = lines[n];
+
+        // Replay 'line':
+        fwd.clear();
+        bwd.clear();
+        ind pos = 0;
+        for (uind i = 0; i < line.size(); i++){
+            ushort chr;
+            if ((uchar)line[i] == '\b'){
+                pos--;
+                chr = ' ' | (win_attr[0] << 8);
+            }else
+                chr = line[i];
+
+            if (pos >= 0) fwd(pos) = chr;
+            else          bwd(~pos) = chr;
+
+            if ((uchar)line[i] != '\b')
+                pos++;
+        }
+
+        // Write back result:
+        for (uind i = 0; i < bwd.size(); i++)
+            new_data.push('\b');
+        for (uind i = bwd.size(); i > 0;) i--,
+            new_data.push(bwd[i]);
+
+        for (uind i = 0; i < fwd.size(); i++)
+            new_data.push(fwd[i]);
+        for (ind i = fwd.size(); i > pos; i--)
+            new_data.push('\b');
+
+        if (n + 1 < lines.size())
+            new_data.push('\n');
+    }
+
+    new_data.copyTo(data);
+}
+
+
+void ansiFlush(Vec<ushort>& data, bool use_stdout)
+{
+    optimizeFlushData(data);
+
+    uint attr = 0;
+    for (uind i = 0; i < data.size(); i++){
+        uint a = data[i] >> 8;
+        if (attr != a){
+            char buf[128];
+            attr = a;
+            sprintf(buf, "\x1B[0%s%s%s%sm",
+                (attr & BOLD)  ? csi_bold  : "",
+                (attr & EMPH)  ? csi_emph  : "",
+                (attr & UNDER) ? csi_under : "",
+                (attr & REV)   ? csi_rev   : "");
+
+            for (cchar* p = buf; *p; p++)
+                con_writer[use_stdout]->putChar(*p);
+        }
+
+        con_writer[use_stdout]->putChar((char)data[i]);
+    }
+    if (attr != 0){
+        for (cchar* p = "\x1B[0m"; *p; p++)
+            con_writer[use_stdout]->putChar(*p);
+    }
+
+    con_writer[use_stdout]->flush();
+}
+
+
+#if defined(_MSC_VER)
+void winBackspace(uind count)
+{
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
+    while (count > 0){
+        if (info.dwCursorPosition.X > 0)
+            info.dwCursorPosition.X--;
+        else if (info.dwCursorPosition.Y > 0){
+            info.dwCursorPosition.X = info.dwMaximumWindowSize.X - 1;
+            info.dwCursorPosition.Y--;
+        }
+        count--;
+    }
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
+}
+
+
+void winFlushToken()
+{
+    if (win_token.size() == 0) return;
+
+    const uint burst_sz = 65535;
+    uind offset = 0;
+    for(;;){
+        if (offset + burst_sz < win_token.size()){
+            WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), &win_token[offset], burst_sz, NULL, NULL);
+            offset += burst_sz;
+        }else{
+            WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), &win_token[offset], win_token.size() - offset, NULL, NULL);
+            break;
+        }
+    }
+    win_token.clear();
+}
+
+void winFlush(Vec<ushort>& data)
+{
+    optimizeFlushData(data);
+
+    uint attr = 0;
+    assert(win_token.size() == 0);
+    for (uind i = 0; i < data.size(); i++){
+        uint a = data[i] >> 8;
+        if (attr != a){
+            winFlushToken();
+            attr = a;
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), win_attr[attr]);
+        }
+
+        if ((char)data[i] == '\b'){
+            winFlushToken();
+            uind count = 1;
+            while (i+1 < data.size() && (char)data[i+1] == '\b')
+                count++, i++;
+            winBackspace(count);
+        }else
+            win_token.push((char)data[i]);
+    }
+    winFlushToken();
+    if (attr != 0)
+        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), win_attr[0]);
+}
+#endif
+
+
+static uchar printable_char[256];
+
+
+ZZ_Initializer(printable_char, -10050){
+    for (uint i = 0; i < 256; i++) printable_char[i] = true;
+    printable_char[(uint)(uchar)'\b'] = false;
+    printable_char[(uint)(uchar)'\t'] = false;
+    printable_char[(uint)(uchar)'\f'] = false;
+    printable_char[(uint)(uchar)'\r'] = false;
+    printable_char[(uint)(uchar)'\n'] = false;
+    printable_char[(uint)(uchar)'\a'] = false;
+}
+
+
+static
+void clearEol(StrState& s)
+{
+    for (uint i = s.column; i < s.cr_len; i++) fbuf.push(' '  | (s.attr << 8));
+    for (uint i = s.column; i < s.cr_len; i++) fbuf.push('\b' | (s.attr << 8));
+}
+
+
+
+static
+void flushChars(bool use_stdout)
+{
+    StrState& s = ss[use_stdout];
+    assert(s.buf.size() > 0);
+    assert(s.buf.last() == '\f' || s.buf.last() == '\n');
+
+    // Did we switch from stdout to stderr in the middle of a line?
+    if (is_console[use_stdout]){
+        if (use_stdout != was_stdout && ss[was_stdout].column != 0){
+            fbuf.push('\n' | (ss[was_stdout].attr << 8));
+            ss[was_stdout].column = 0;
+        }
+        was_stdout = use_stdout;
+    }
+
+    // Generate ANSI formatted output string:
+    for (uind i = 0; i < s.buf.size(); i++){
+        char c = s.buf[i];
+        if (printable_char[(uint)(uchar)c]){
+            // Indent:
+            if (s.column < s.indent){
+                for (uint j = 0; j < s.indent; j++) fbuf.push(' ' | (s.attr << 8));
+                s.column = s.indent;
+            }
+
+            // Write char:
+            fbuf.push((uchar)c | (s.attr << 8));
+            s.column++;
+
+        }else{
+            if (c == '\a'){
+                i++; c = s.buf[i];
+                if      (c == '*') s.attr ^= BOLD;
+                else if (c == '/') s.attr ^= EMPH;
+                else if (c == '_') s.attr ^= UNDER;
+                else if (c == '^') s.attr ^= REV;
+                else if (c == '0') s.attr = 0;
+                else               assert(false);
+
+            }else if (c == '\t'){
+                i++; c = s.buf[i];
+                if      (c == '+') s.indent++;
+                else if (c == '-') assert(s.indent != 0), s.indent--;
+                else if (c == '0') s.indent = 0;
+                else               assert(false);
+
+            }else if (c == '\f'){
+                clearEol(s);
+                s.cr_len = s.column;
+
+            }else if (c == '\r'){
+                newMax(s.cr_len, s.column);
+                uint back_to = (s.marks.size() == 0) ? 0 : s.marks.last();
+                while (s.column > back_to){
+                    fbuf.push('\b' | (s.attr << 8));
+                    s.column--;
+                }
+
+            }else if (c == '\n'){
+                clearEol(s);
+                fbuf.push('\n' | (s.attr << 8));
+                s.cr_len = 0;
+                s.column = 0;
+                s.marks.clear();
+
+            }else if (c == '\b'){
+                i++; c = s.buf[i];
+                if      (c == '+') s.marks.push(s.column);
+                else if (c == '-') { if (s.marks.size() > 0) s.marks.pop(); }
+                else if (c == '0') s.marks.clear();
+                else               assert(false);
+
+            }else
+                assert(false);
+        }
+    }
+
+    // Flush:
+    Vec<ushort>& obuf = out_buf[use_stdout];
+
+    if (!use_ansi[use_stdout]){
+        for (uind i = 0; i < fbuf.size(); i++)
+            fbuf[i] = (char)fbuf[i];
+    }
+
+    if (!is_console[use_stdout]){
+        for (uind i = 0; i < fbuf.size(); i++)
+            obuf.push(fbuf[i]);
+
+        if ((char)obuf.last() == '\n'){
+            uind i = 0, j = 0;
+            for (; i < obuf.size(); i++){
+                if ((char)obuf[i] == '\b'){
+                    if (j > 0) j--;
+                }else{
+                    obuf[j] = obuf[i];
+                    j++;
+                }
+            }
+            obuf.shrinkTo(j);
+
+            ansiFlush(obuf, use_stdout);
+            obuf.clear();
+        }
+
+    }else{
+      #if defined(_MSC_VER)
+        if (con_type[use_stdout] == FILE_TYPE_CHAR)
+            winFlush(fbuf);
+        else
+            ansiFlush(fbuf, use_stdout);
+      #else
+        ansiFlush(fbuf, use_stdout);
+      #endif
+    }
+
+    s.buf.clear();
+    fbuf.clear();
+}
+
+
+void writeChars(cchar* data, uind size, bool use_stdout)
+{
+    for (uind i = 0; i < size; i++){
+        ss[use_stdout].buf.push(data[i]);
+        if (data[i] == '\n' || data[i] == '\f')
+            flushChars(use_stdout);
+    }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Console info:
+
+
+// Try to guess the terminal width.
+uint getConsoleWidth()
+{
+    cchar* text = getenv("ZZ_COLUMNS");
+    if (text)
+        return atoi(text);
+
+  #if defined(TIOCGWINSZ)
+    struct winsize win;
+    if (ioctl(1, TIOCGWINSZ, &win) == 0)
+        return win.ws_col;
+  #endif
+
+  #if defined(_MSC_VER)
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    bool ok = GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
+    if (ok)
+        return info.dwMaximumWindowSize.X;
+  #endif
+
+    return 80;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

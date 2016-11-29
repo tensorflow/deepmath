@@ -1,0 +1,734 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Utility.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Various helper functions.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//| This module is still in a very preliminary state. Especially the string handling is expected
+//| to be replaced with something more solid once I have the time.
+//|________________________________________________________________________________________________
+
+
+namespace ZZ {
+using namespace std;
+
+#if defined(IN)     // -- Windows defines this macro
+  #undef IN
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Standard streams:
+
+
+ZZ_Global_Lock(stdout_writer);
+ZZ_Global_Lock(stderr_writer);
+
+StdInReader  std_in_reader;
+StdOutWriter std_out_writer;
+StdErrWriter std_err_writer;
+Out std_out;
+Out std_err;
+
+bool filtered_std_out;
+bool filtered_std_err;
+
+
+ZZ_Initializer(std_out, -10050){
+    std_out.init(std_out_writer);
+    std_err.init(std_err_writer);
+}
+
+
+ZZ_Finalizer(std_out, -10050){
+    std_out.finish(true);
+    std_err.finish(true);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Files:
+
+
+// Returns 'UINT64_MAX' if file does not exist.
+uint64 fileSize(String filename)
+{
+    File in(filename, "r");
+    if (in.null())
+        return UINT64_MAX;
+    in.seek(0, SEEK_END);
+    return in.tell();
+}
+
+
+// Returns the remainder of stream 'in' through vector 'out'. NOTE:
+//   - 'out' is NOT cleared; the data read is appended.
+//   - No '\0' is added at the end by default.
+//   - 'initial_reserve' is added to the current sizeof 'out' if not empty.
+void readFile(File& in, Vec<char>& out, bool close_stream/*=false*/, size_t initial_reserve/*=0*/, bool add_null/*=false*/)
+{
+    out.reserve(out.size() + initial_reserve);
+    while (!in.eof())
+        out.push(in.scan());
+    if (add_null)
+        out.push(0);
+    if (close_stream)
+        in.close();
+}
+
+
+// Returns the remainder of stream 'in' as an array. NOTE:
+//   - No '\0' is added at the end by default.
+//   - The array should be freed by caller using 'dispose()'.
+Array<char> readFile(File& in, bool close_stream/*=false*/, size_t initial_reserve/*=0*/, bool add_null/*=false*/)
+{
+    Vec<char> data;
+    readFile(in, data, close_stream, initial_reserve, add_null);
+
+    Array<char> ret = slice(data);
+    data.release();
+    return ret;
+}
+
+
+// Returns FALSE if file could not be opened.
+bool readGzFile(String filename, Vec<char>& out, bool add_null/*=false*/)
+{
+    InFile in(filename, true);
+    if (!in)
+        return false;
+
+    while (!in.eof())
+        out.push(in++);
+
+    if (add_null)
+        out.push(0);
+
+    return true;
+}
+
+
+// Returns FALSE if file could not be opened.
+bool readFile(String filename, Vec<char>& out, bool add_null/*=false*/)
+{
+    if (suf(filename, ".gz"))
+        return readGzFile(filename, out, add_null);
+
+    File in(filename.c_str(), "r");
+    if (in.null())
+        return readGzFile(filename + ".gz", out, add_null);
+
+    in.seek(0, SEEK_END);
+    uint64 size = in.tell();
+    in.rewind();
+
+    readFile(in, out, true, (size_t)size + (size_t)add_null, add_null);
+    return true;
+}
+
+
+// Returns the null-array if file could not be opened, otherwise the file content as an array.
+// The array should be freed by caller using 'dispose()'.
+Array<char> readFile(String filename, bool add_null/*=false*/)
+{
+    if (suf(filename, ".gz")){
+        Vec<char> text;
+        if (readGzFile(filename, text, add_null))
+            return text.release();
+        else
+            return Array<char>();
+    }
+
+    uint64 sz = fileSize(filename);
+    if (sz == UINT64_MAX || sz > (uint64)~size_t(0) || sz > (uint64)UIND_MAX){
+        Vec<char> text;
+        if (readGzFile(filename + ".gz", text, add_null))
+            return text.release();
+        else
+            return Array<char>();
+    }
+
+    Array<char> text = Array_alloc<char>(sz + (add_null ? 1 : 0));
+
+    FILE* in = fopen(filename.c_str(), "rb");
+    size_t n = fread(text.base(), 1, sz, in);
+    fclose(in);
+    if (n != sz){
+        dispose(text);
+        return Array<char>();
+    }else{
+        if (add_null)
+            text.last() = 0;
+        return text;
+    }
+}
+
+
+bool writeFile(String filename, Array<char> data)
+{
+    File out(filename, "w");
+    if (out.null())
+        return false;
+
+    for (uind i = 0; i < data.size(); i++)
+        out.push(data[i]);
+    out.close();
+    return true;
+}
+
+
+void readLine(In& in, Vec<char>& out_text)
+{
+    out_text.clear();
+    for(;;){
+        if (in.eof()) break;
+        int chr = in.scan();
+        if (chr == '\n') break;
+        out_text.push(chr);
+    }
+}
+
+
+void readLine(File& in, Vec<char>& out_text)
+{
+    out_text.clear();
+    for(;;){
+        if (in.eof()) break;
+        int chr = in.scan();
+        if (chr == '\n') break;
+        out_text.push(chr);
+    }
+}
+
+
+void readLine(FILE* in, Vec<char>& out_text)
+{
+    out_text.clear();
+    for(;;){
+        int chr = fgetc(in);
+        if (chr == EOF) break;
+        if (chr == '\n') break;
+        out_text.push(chr);
+    }
+}
+
+
+// Opens a temporary file with given prefix and returns file descriptor (or -1 if fails).
+int tmpFile(cchar* prefix, String& out_name)
+{
+#if !defined(_MSC_VER)
+    out_name = stringf("%sXXXXXX", prefix);
+    int fd = mkstemp(out_name.c_str());
+    if (fd == -1)
+        out_name = "";
+    return fd;
+
+#else
+    for (uint i = 0; i < 10; i++){
+        out_name = (FMT "%_%X_%_", prefix, realTimeAbs(), _getpid());
+        int fd = _open(out_name.c_str(), O_CREAT | O_EXCL | O_BINARY | O_RDWR, _S_IREAD | _S_IWRITE);
+        if (fd == -1)
+            out_name = "";
+        return fd;
+    }
+    assert(false);  // -- could not open temporary file
+    return 0;
+#endif
+}
+
+
+String dateAndTimeText()
+{
+    time_t epoch_secs;
+    time(&epoch_secs);;
+
+    char buf[26];
+    ctime_r(&epoch_secs, buf);
+    buf[24] = 0;
+
+    return String(buf);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Parsing numbers:
+
+
+// MOTIVATION:
+//   - No standard way of parsing 64-bit integers ('atoq()', 'atoll()'...)
+//   - No non-locale dependent way of parsing floats ('strtod()' may interpret ',' as '.' in Europe...)
+
+
+cchar* Excp_ParseNum::Type_name[Type_size] = {
+    "Empty string",
+    "Overflow",
+    "Out-of-range",
+    "Ill-formed",
+};
+
+
+macro bool eof(cchar* p) { return *p == 0; }
+macro bool eof(In& in)   { return in.eof(); }
+
+
+// Requires that 'text' is a sequence of [0-9] with no leading or trailing spaces or other
+// characters. Returns a 64-bit unsigned integer on success, or throws an exception (without
+// advancing pointer 'text0') on error.
+template<class IN>
+uint64 parseUInt64_(IN& in)
+    /*throw(Excp_ParseNum)*/
+{
+    if (*in < '0' || *in > '9') throw Excp_ParseNum(Excp_ParseNum::EmptyString);
+
+    uint64 r = 0;
+    while (!eof(in) && *in >= '0' && *in <= '9'){
+        uint64 dig = *in - '0';
+        if (r < 1844674407370955161ull || (r == 1844674407370955161ull && dig <= 5))      // -- maximum 64-bit unsigned number: 18446744073709551615
+            r = r * 10 + dig;
+        else{
+            throw Excp_ParseNum(Excp_ParseNum::Overflow);
+        }
+
+        in++;
+    }
+    return r;
+}
+
+
+// Same interface as 'parseUInt64()', but allows for an optional '+' or '-' as the first character
+// of 'text'.
+template<class IN>
+int64 parseInt64_(IN& in)
+    /*throw(Excp_ParseNum)*/
+{
+    uint64 tmp;
+    if (*in == '-'){
+        in++;
+        tmp = parseUInt64(in);
+        if (tmp > 9223372036854775808ull) throw Excp_ParseNum(Excp_ParseNum::Overflow);
+        return -tmp;
+    }else{
+        if (*in == '+')
+            in++;     // -- just ignore the '+'
+        tmp = parseUInt64(in);
+        if (tmp > 9223372036854775807ull) throw Excp_ParseNum(Excp_ParseNum::Overflow);
+        return tmp;
+    }
+}
+
+
+// Wrap range checking around uint-parser:
+template<class IN>
+uint64 parseUInt64_(IN& in, uint64 lo, uint64 hi)
+    /*throw(Excp_ParseNum)*/
+{
+    uint64 tmp = parseUInt64(in);
+    if (tmp < lo || tmp > hi) throw Excp_ParseNum(Excp_ParseNum::OutOfRange);
+    return tmp;
+}
+
+
+// Wrap range checking around int-parser:
+template<class IN>
+int64 parseInt64_(IN& in, int64 lo, int64 hi)
+    /*throw(Excp_ParseNum)*/
+{
+    int64 tmp = parseInt64(in);
+    if (tmp < lo || tmp > hi) throw Excp_ParseNum(Excp_ParseNum::OutOfRange);
+    return tmp;
+}
+
+
+//- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+#if defined(sun) || defined(_MSC_VER) || defined(__APPLE__) || defined(__FreeBSD__)
+  #define exp2(x)  pow(2 , (double)(x))
+  #define exp10(x) pow(10, (double)(x))
+#endif
+
+
+// Deviates from C standard by:
+//
+//   - Allows a leading '+' or '-' (this would be a unary operator, a separate token in C)
+//   - Don't require a '.' or an 'e' somewhere to show that it is a float rather than an int.
+//   - Allows for powers of 2 using 'p' instead of 'e', but only for fractionless numbers less than 2^64
+//   - Don't allow suffixes 'f' or 'lf' etc. to denote float type.
+//
+template<class IN>
+double parseDouble_(IN& in)
+    /*throw(Excp_ParseNum)*/
+{
+    // Handle sign:
+    bool sgn;
+    if (*in == '-'){
+        sgn = true;
+        in++;
+    }else{
+        if (*in == '+')
+            in++;
+        sgn = false;
+    }
+
+    if ((*in < '0' || *in > '9') && *in != '.')
+        throw Excp_ParseNum(Excp_ParseNum::EmptyString);
+
+    // PARSE MANTISSA (on one of the forms: "123", ".123", "123.", "123.123" for some digit sequence "123"):
+    uint64 r = 0;
+    int      pow_of_10 = 0;
+    while (!eof(in) && *in >= '0' && *in <= '9'){
+        uint64 dig = *in - '0';
+        if (r < 1844674407370955161ull || (r == 1844674407370955161ull && dig <= 5)){     // -- maximum 64-bit unsigned number: 18446744073709551615
+            r = r * 10 + dig;
+            in++;
+
+        }else{
+            // Integer part more than 64 bits, skip through remaining digits and record exponent: (don't care about rounding at this point; the mantissa is just 52 bits)
+            do{
+                pow_of_10++;
+                in++;
+            }while (!eof(in) && *in >= '0' && *in <= '9');
+            break;
+        }
+    }
+
+    if (!eof(in) && *in == '.'){
+        in++;
+        if (pow_of_10 > 0){
+            while (!eof(in) && *in >= '0' && *in <= '9') in++;    // -- just ignore fractional part, we have too many digits already
+
+        }else{
+            while (!eof(in) && *in >= '0' && *in <= '9'){
+                uint64 dig = *in - '0';
+                if (r < 1844674407370955161ull || (r == 1844674407370955161ull && dig <= 5)){     // -- maximum 64-bit unsigned number: 18446744073709551615
+                    r = r * 10 + dig;
+                    in++;
+                    pow_of_10--;
+                }else{
+                    in++;
+                    while (!eof(in) && *in >= '0' && *in <= '9') in++;    // -- ignore remaining fractional part, we have too many digits already
+                    break;
+                }
+            }
+        }
+    }
+
+    // PARSE EXPONENT: (one of characters 'eEpP' followed optional +/- sign followed by a non-empty sequence of digits)
+    double ret;
+    if (!eof(in) && (*in == 'e' || *in == 'E')){
+        in++;
+        int expo = (int)parseInt64_(in);
+        pow_of_10 += expo;
+        ret = r * exp10(pow_of_10);
+
+    }else if (!eof(in) && (*in == 'p' || *in == 'P')){
+        if (pow_of_10 != 0)
+            throw Excp_ParseNum(Excp_ParseNum::IllFormed);
+        in++;
+        int expo = (int)parseInt64_(in);
+        ret = r * exp2(expo);
+
+    }else
+        ret = r * exp10(pow_of_10);
+
+    return sgn ? -ret : ret;
+}
+
+
+// Wrap range checking around double-parser:
+template<class IN>
+double parseDouble_(IN& in, double lo, double hi, bool lo_strict, bool hi_strict)
+    /*throw(Excp_ParseNum)*/
+{
+    double tmp = parseDouble_(in);
+    if (tmp < lo || (tmp == lo && lo_strict) || tmp > hi || (tmp == hi && hi_strict))
+        throw Excp_ParseNum(Excp_ParseNum::OutOfRange);
+    return tmp;
+}
+
+
+uint64 parseUInt64(In&     in) /*throw(Excp_ParseNum)*/ { return parseUInt64_(in); }
+uint64 parseUInt64(cchar*& in) /*throw(Excp_ParseNum)*/ { return parseUInt64_(in); }
+int64  parseInt64 (In&     in) /*throw(Excp_ParseNum)*/ { return parseInt64_ (in); }
+int64  parseInt64 (cchar*& in) /*throw(Excp_ParseNum)*/ { return parseInt64_ (in); }
+double parseDouble(In&     in) /*throw(Excp_ParseNum)*/ { return parseDouble_(in); }
+double parseDouble(cchar*& in) /*throw(Excp_ParseNum)*/ { return parseDouble_(in); }
+
+uint64 parseUInt64(In&     in, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/ { return parseUInt64_(in, lo, hi); }
+uint64 parseUInt64(cchar*& in, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/ { return parseUInt64_(in, lo, hi); }
+int64  parseInt64 (In&     in, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/ { return parseInt64_ (in, lo, hi); }
+int64  parseInt64 (cchar*& in, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/ { return parseInt64_ (in, lo, hi); }
+double parseDouble(In&     in, double lo, double hi, bool ls, bool hs) /*throw(Excp_ParseNum)*/ { return parseDouble_(in, lo, hi, ls, hs); }
+double parseDouble(cchar*& in, double lo, double hi, bool ls, bool hs) /*throw(Excp_ParseNum)*/ { return parseDouble_(in, lo, hi, ls, hs); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Printing strings and numbers as text:
+
+
+void printUInt(Out& out, uint64 x)
+{
+    if (x == 0)
+        out.push('0');
+
+    else{
+        char buf[20];
+        uint sz = 0;
+        while (x != 0){
+            buf[sz++] = '0' + uchar(x % 10);
+            x /= 10; }
+
+        for (uint i = sz; i > 0;) i--,
+            out.push(buf[i]);
+    }
+}
+
+
+void printInt(Out& out, int64 x)
+{
+    if (x < 0){
+        out.push('-');
+        x = -x; }
+
+    printUInt(out, x);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Printf to newly allocated string:
+
+
+static FILE* printf_dummy_file;
+
+ZZ_Initializer(printf_dummy_file, -10050) {
+  #if !defined(_MSC_VER)
+    printf_dummy_file = fopen("/dev/null", "wb");
+  #else
+    printf_dummy_file = fopen("NUL", "wb");
+  #endif
+}
+
+ZZ_Finalizer(printf_dummy_file, -10050) {
+    fclose(printf_dummy_file);
+}
+
+
+char* vnsprintf(const char* format, va_list args)
+{
+    uint    n;
+    char*   ret;
+    va_list args_copy;
+
+#if defined(__va_copy)
+    __va_copy(args_copy, args);
+#else
+  #if defined(va_copy)
+    va_copy(args_copy, args);
+  #else
+    args_copy = args;
+  #endif
+#endif
+    n = vfprintf(printf_dummy_file, format, args);
+    ret = xmalloc<char>(n + 1);
+    ret[n] = char(255);
+    args = args_copy;
+    vsprintf(ret, format, args);
+#if !defined(__va_copy) && defined(va_copy)
+    va_end(args_copy);
+#endif
+    assert(ret[n] == 0);
+    return ret;
+}
+
+
+char* nsprintf(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* ret = vnsprintf(format, args);
+    va_end(args);
+    return ret;
+}
+
+
+void pf(cchar* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* ret = vnsprintf(format, args);
+    va_end(args);
+    std_out += ret, FL;
+    xfree(ret);
+}
+
+
+void pe(cchar* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* ret = vnsprintf(format, args);
+    va_end(args);
+    std_err += ret, FL;
+    xfree(ret);
+}
+
+
+String stringf(cchar* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* tmp = vnsprintf(format, args);
+    va_end(args);
+
+    String ret = String(tmp);
+    xfree(tmp);
+    return ret;
+}
+
+
+void pushf(Vec<char>& out, cchar* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* tmp  = vnsprintf(format, args);
+    char* addr = tmp;
+    va_end(args);
+
+    while (*tmp != 0)
+        out.push(*tmp++);
+    xfree(addr);
+}
+
+
+void pushf(Vec<uchar>& out, cchar* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* tmp  = vnsprintf(format, args);
+    char* addr = tmp;
+    va_end(args);
+
+    while (*tmp != 0)
+        out.push(uchar(*tmp++));
+    xfree(addr);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Directories:
+
+
+bool readDir(String path, Vec<FileInfo>& files, Vec<FileInfo>& dirs, Vec<FileInfo>* others)
+{
+    char* cwd0 = getcwd(NULL, 0);
+    int err = chdir(path.c_str());
+    if (err != 0) return false;
+    char* cwd1 = getcwd(NULL, 0);
+
+    DIR* dir = opendir(".");
+    if (dir == NULL)
+        return false;
+
+    struct dirent* entry;
+    for(;;){
+        entry = readdir(dir);
+        if (entry == NULL) break;
+
+        char* name = entry->d_name;
+        struct stat st;
+        String filename = (FMT "%_/%_", cwd1, name);
+        stat(filename.c_str(), &st);
+        FileInfo info(name, filename, st.st_size, st.st_mtime);
+
+        if (S_ISREG(st.st_mode))
+            files.push(info);
+        else if (S_ISDIR(st.st_mode))
+            dirs.push(info);
+        else if (others)
+            others->push(info);
+    }
+    closedir(dir);
+    int err2 = chdir(cwd0); assert(err2 == 0);
+
+    return true;
+}
+
+
+#if defined(_MSC_VER)
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Windows compatibility:
+
+
+// This hack does exactly what 'dirname' does under Linux. Don't ask me why this behavior is
+// desirable.
+String dirName(const String& str)
+{
+    if (!has(str, '/'))
+        return ".";
+    else if (str == "//")
+        return str;
+
+    uind i = str.size();
+    while (i > 1 && str[i-1] == '/') i--;
+
+    for (; i > 0;){ i--;
+        if (str[i] == '/'){
+            if (i == 1 && str[0] == '/')
+                return "//";
+
+            while (i > 1 && str[i-1] == '/') i--;
+            if (i == 0)
+                return "/";
+            else
+                return str.sub(0, i);
+        }
+    }
+
+    return ".";
+}
+
+
+// Same story as for 'dirName()' above.
+String baseName(const String& str)
+{
+    if (str == "")
+        return ".";
+
+    uind i = str.size();
+    while (i > 1 && str[i-1] == '/') i--;
+    uind end = i;
+
+    for (; i > 0;){ i--;
+        if (str[i] == '/'){
+            if (i+1 == end)
+                return "/";
+            else
+                return str.sub(i+1, end);
+        }
+    }
+
+    return str.sub(0, end);
+}
+
+
+char* getcwd(char* buf, size_t size)
+{
+    char* dir = _getcwd(buf, size);
+    if (dir){
+        for (char* p = dir; *p; p++)
+            if (*p == '\\')
+                *p = '/';
+    }
+
+    return dir;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+#endif
+}

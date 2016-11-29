@@ -1,0 +1,47 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Hash.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Geometric progression of prime twins upto 2^32 or 2^64.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+uint64 prime_twins[140] = {
+    3ull, 5ull, 11ull, 17ull, 29ull, 41ull, 59ull, 101ull, 137ull, 179ull, 227ull, 311ull, 419ull,
+    569ull, 809ull, 1019ull, 1277ull, 1607ull, 2027ull, 2549ull, 3251ull, 4091ull, 5231ull, 6551ull,
+    8219ull, 10301ull, 12917ull, 16187ull, 20357ull, 25469ull, 31847ull, 39827ull, 49787ull, 62297ull,
+    78137ull, 97787ull, 122321ull, 152939ull, 191249ull, 239231ull, 299357ull, 374291ull, 467867ull,
+    585041ull, 731501ull, 914519ull, 1143281ull, 1429247ull, 1786637ull, 2233379ull, 2791967ull,
+    3490031ull, 4362581ull, 5453519ull, 6817007ull, 8521451ull, 10651931ull, 13315121ull, 16643987ull,
+    20805047ull, 26006327ull, 32508209ull, 40635311ull, 50795027ull, 63493889ull, 79367927ull,
+    99209921ull, 124013411ull, 155016809ull, 193771031ull, 242214041ull, 302768129ull, 378460517ull,
+    473075957ull, 591345191ull, 739181501ull, 923976959ull, 1154971577ull, 1443714707ull,
+    1804643759ull, 2255804711ull, 2819755997ull, 3524695169ull, 4405869371ull, 5507336771ull,
+    6884171477ull, 8605214351ull, 10756517969ull, 13445647571ull, 16807059497ull, 21008825657ull,
+    26261032451ull, 32826290927ull, 41032863791ull, 51291079979ull, 64113850277ull, 80142313091ull,
+    100177891727ull, 125222364737ull, 156527959307ull, 195659949389ull, 244574936831ull,
+    305718671717ull, 382148339999ull, 477685425377ull, 597106781807ull, 746383478081ull,
+    932979347759ull, 1166224185977ull, 1457780232737ull, 1822225291331ull, 2277781614179ull,
+    2847227017751ull, 3559033773749ull, 4448792217509ull, 5560990272281ull, 6951237840359ull,
+    8689047300761ull, 10861309125971ull, 13576636407911ull, 16970795509907ull, 21213494388167ull,
+    26516867985911ull, 33146084983157ull, 41432606229029ull, 51790757786849ull, 64738447233749ull,
+    80923059042377ull, 101153823803117ull, 126442279754081ull, 158052849695369ull, 197566062119357ull,
+    246957577649609ull, 308696972062487ull, 385871215078199ull, 482339018847839ull, 602923773562679ull,
+    753654716953679ull, 942068396192177ull, 1177585495240697ull,
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

@@ -1,0 +1,582 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Format.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Formating functions for the 'Out' class.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//| This module defines an extensible system for formatted output to streams (with some extra
+//| convenience macros for 'stdout' and 'stderr'). The minimum requirement for a user-defined type
+//| to participate is to define a 'write_' function:
+//|
+//|    template<> fts_macro void write_(Out& out, const <type>& t) { <code that writes 't'> }
+//|    template<> fts_macro void write_(Out& out, const <type>& t, Str flags) { <code> }
+//|
+//| For more advanced outputs, you can also define a 'format_' function that can accept flags to
+//| modify the output.
+//|
+//| WriteLn <format>, <args,...>
+//| (FMT <format>, <args,...>)
+//| Throw(<exception>) <format>, <args,...>
+//|
+//| out %= ...      -- just formatting
+//| out /= ...      -- auto-newline
+//| out &= ...      -- auto-flush
+//| out |= ...      -- auto-newline + auto-flush
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Types:
+
+
+struct Out_Flush {};
+struct Out_NewlineFlush {};
+
+static const Out_Flush        FL = {};
+static const Out_NewlineFlush NL = {};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Operators:
+
+
+template<class T> macro void write_(Out& out, const T& x);
+
+template<class T> macro Out& operator+=(Out& out, const T& x) { write_(out, x); return out; }
+template<class T> macro Out& operator, (Out& out, const T& x) { write_(out, x); return out; }
+    // -- ',' is just a synonym for '+='. This supports the syntax: out += "hello", " world"
+
+template<class T> macro Out& operator+=(Out& out, T x[]) { write_(out, (const T*)x); return out; }  // -- have to handle this cast separately (why?)
+template<class T> macro Out& operator, (Out& out, T x[]) { write_(out, (const T*)x); return out; }
+
+template<class T> macro void write_(Out& out, const T& x, Str flags) { operator+=(out, x); } // -- version with flags
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Flushing:
+
+
+template<> fts_macro void write_(Out& out, const Out_Flush&) {
+    out.flush(); }
+
+template<> fts_macro void write_(Out& out, const Out_NewlineFlush&) {
+    out.push('\n');
+    out.flush(); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Default outputs:
+
+
+// Vectors and arrays:
+template<class T> fts_macro void write_(Out& out, const Array<T>& v) {
+    out += '{';
+    if (v.size() > 0){
+        out += v[0];
+        for (uind i = 1; i < v.size(); i++){
+            out += ';', ' ';
+            out += v[i];
+        }
+    }
+    out += '}';
+}
+
+// If the first character of 'flags' is '\n', then each entry is written on its own line without the
+// wrapping '{' and '}' braces. If it is '\r' the last newline is omitted. A space ' ' just writes
+// the elements without separators altogether.
+template<class T> fts_macro void write_(Out& out, const Array<T>& v, Str flags)
+{
+    char flag = flags[0];
+    if (flag != '_') flags = flags.slice(1);
+    bool no_flags = (flags.size() == 0) || (flags.size() == 1 && flags[0] == '_');
+
+    if (flag == '\n' || flag == '\r' || flag == ' '){
+        for (uind i = 0; i < v.size(); i++){
+            if (!no_flags) write_(out, v[i], flags);
+            else           write_(out, v[i]);
+            if (flag == '\n' || (flag == '\r' && i+1 != v.size())) out += NL;
+        }
+
+    }else if (flag == ','){
+        if (v.size() > 0){
+            for (uind i = 0; i < v.size(); i++){
+                if (i > 0) out += ',', ' ';
+                if (!no_flags) write_(out, v[i], flags);
+                else           write_(out, v[i]);
+            }
+        }
+
+    }else{
+        out += '{';
+        if (v.size() > 0){
+            for (uind i = 0; i < v.size(); i++){
+                if (i > 0) out += ';', ' ';
+                if (!no_flags) write_(out, v[i], flags);
+                else           write_(out, v[i]);
+            }
+        }
+        out += '}';
+    }
+}
+
+template<class T> fts_macro void write_(Out& out, const Vec<T>& v)            { write_(out, slice(v)); }
+template<class T> fts_macro void write_(Out& out, const Vec<T>& v, Str flags) { write_(out, slice(v), flags); }
+
+// 'char's are output as characters::
+template<> fts_macro void write_(Out& out, const char&  chr) { out.push(chr); }
+template<> fts_macro void write_(Out& out, const schar& chr) { out.push((char)chr); }
+template<> fts_macro void write_(Out& out, const uchar& chr) { out.push((char)chr); }
+
+// Containers of 'char's as strings:
+template<> fts_macro void write_(Out& out, cchar* const& text) { cchar* p = text; while (*p) out.push(*p++); }
+template<> fts_macro void write_(Out& out, char*  const& text) { cchar* p = text; while (*p) out.push(*p++); }
+template<size_t sz> fts_macro void write_(Out& out, char  const (&text) [sz]) { cchar* p = text; while (*p) out.push(*p++); }
+
+template<> fts_macro void write_(Out& out, const Array<cchar>& text) { if (text){ cchar* p = text.base(); while (p != &text.end_()) out.push(*p++); } else out += "<nil>"; }
+template<> fts_macro void write_(Out& out, const Array<char>&  text) { if (text){ cchar* p = text.base(); while (p != &text.end_()) out.push(*p++); } else out += "<nil>"; }
+template<> fts_macro void write_(Out& out, const Vec<cchar>&   text) { cchar* p = text.base(); while (p != &text.end_()) out.push(*p++); }
+template<> fts_macro void write_(Out& out, const Vec<char>&    text) { cchar* p = text.base(); while (p != &text.end_()) out.push(*p++); }
+
+template<> fts_macro void write_(Out& out, const Out& in_mem_buf) { // -- only works for in memory output streams
+    uind size = in_mem_buf.vec().size();   // -- we need this if 'out == in_mem_buf'.
+    for (uind i = 0; i < size; i++) out.push(in_mem_buf.vec()[i]); }
+template<> fts_macro void write_(Out& out, const String& s) { out += (Out&)s; }
+
+// Integers are output in decimal representation:
+template<> fts_macro void write_(Out& out, const uint64& num) { printUInt(out, num); }
+template<> fts_macro void write_(Out& out, const uint32& num) { printUInt(out, num); }
+template<> fts_macro void write_(Out& out, const uint16& num) { printUInt(out, num); }
+template<> fts_macro void write_(Out& out, const int64&  num) { printInt (out, num); }
+template<> fts_macro void write_(Out& out, const int32&  num) { printInt (out, num); }
+template<> fts_macro void write_(Out& out, const int16&  num) { printInt (out, num); }
+
+#if defined(__APPLE__) && defined(ZZ_LP64)
+template<> fts_macro void write_(Out& out, const unsigned long& num) { printUInt(out, (uint64)num); }
+template<> fts_macro void write_(Out& out, const long&          num) { printInt (out, (int64)num); }
+#endif
+
+// Booleans:
+template<> fts_macro void write_(Out& out, const bool&  b) { if (b){ out += 't', 'r', 'u', 'e'; }else{ out += 'f', 'a', 'l', 's', 'e'; } }
+template<> fts_macro void write_(Out& out, const lbool& b) { out += name(b); }
+
+// Tuples:
+template<class X, class Y> fts_macro void write_(Out& out, const Pair<X,Y>& t) { out += '('; write_(out, t.fst); out += ',', ' '; write_(out, t.snd); out += ')'; }
+template<class X, class Y, class Z> fts_macro void write_(Out& out, const Trip<X,Y,Z>& t) { out += '('; write_(out, t.fst); out += ',', ' '; write_(out, t.snd); out += ',', ' '; write_(out, t.trd); out += ')'; }
+template<class X, class Y, class Z, class W> fts_macro void write_(Out& out, const Quad<X,Y,Z,W>& t) { out += '('; write_(out, t.fst); out += ',', ' '; write_(out, t.snd); out += ',', ' '; write_(out, t.trd); out += ',', ' '; write_(out, t.fth); out += ')'; }
+
+// Exceptions:
+template<> fts_macro void write_(Out& out, const Excp_Msg& x) { out += x.msg; }
+
+
+// Floats and pointers are defined below.
+//
+// NOTE! We don't support printing non-void pointers since that may be a desired overload for the
+// user (eg. making 'MyType*' print just as a 'MyType').
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Default output with flags:
+
+
+void write_uint  (Out& out, uint64 num, Str flags, bool neg = false);
+void write_double(Out& out, double num, bool dbl_prec, Str flags);
+
+
+macro void write_int(Out& out, int64  num, Str flags)
+{
+    if (num >= 0) write_uint(out,  num, flags, false);
+    else          write_uint(out, -num, flags, true);
+}
+
+
+macro void write_char(Out& out, char chr, Str flags)
+{
+    write_uint(out, uint64(uchar(chr)), flags);
+}
+
+
+template<> fts_macro void write_(Out& out, const char&  chr, Str flags) { write_char(out, chr      , flags); }
+template<> fts_macro void write_(Out& out, const schar& chr, Str flags) { write_char(out, (char)chr, flags); }
+template<> fts_macro void write_(Out& out, const uchar& chr, Str flags) { write_char(out, (char)chr, flags); }
+
+template<> fts_macro void write_(Out& out, const uint64& num, Str flags) { write_uint(out, num, flags); }
+template<> fts_macro void write_(Out& out, const uint32& num, Str flags) { write_uint(out, num, flags); }
+template<> fts_macro void write_(Out& out, const uint16& num, Str flags) { write_uint(out, num, flags); }
+template<> fts_macro void write_(Out& out, const int64&  num, Str flags) { write_int (out, num, flags); }
+template<> fts_macro void write_(Out& out, const int32&  num, Str flags) { write_int (out, num, flags); }
+template<> fts_macro void write_(Out& out, const int16&  num, Str flags) { write_int (out, num, flags); }
+
+template<> fts_macro void write_(Out& out, const float&  num, Str flags) { write_double(out, num, false, flags); }
+template<> fts_macro void write_(Out& out, const double& num, Str flags) { write_double(out, num, true , flags); }
+
+// Unformatted output defined in terms of formatted output:
+template<> fts_macro void write_(Out& out, const float&  num) { write_double(out, num, false, Str()); }
+template<> fts_macro void write_(Out& out, const double& num) { write_double(out, num, true , Str()); }
+
+template<> fts_macro void write_(Out& out, void*       const& ptr) { write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8X" : ":.16X")); }
+template<> fts_macro void write_(Out& out, const void* const& ptr) { write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8X" : ":.16X")); }
+
+template<> fts_macro void write_(Out& out, void* const& ptr, Str flags) {
+    assert(flags.size() == 1);
+    if (flags[0] == 'p') write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8x" : ":.16x"));
+    else assert(flags[0] == 'P'), write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8X" : ":.16X")); }
+
+template<> fts_macro void write_(Out& out, const void* const& ptr, Str flags) {
+    assert(flags.size() == 1);
+    if (flags[0] == 'p') write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8x" : ":.16x"));
+    else assert(flags[0] == 'P'), write_uint(out, uintp(ptr), Str(sizeof(uintp) == 4 ? ":.8X" : ":.16X")); }
+
+template<> fts_macro void write_(Out& out, const Array<cchar>& text, Str flags) {
+    assert(flags.size() == 1 && flags[0] == 'n');   // -- only flag supported so far (suppress '<nil>' printing)
+    if (text){ operator+=(out, text); } }
+template<> fts_macro void write_(Out& out, const Array<char>&  text, Str flags) {
+    assert(flags.size() == 1 && flags[0] == 'n');
+    if (text){ operator+=(out, text); } }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Formated outputs:
+
+
+macro void writeUntilFormatChar(cchar*& fmt, Out& out)
+{
+    for(;;){
+        if (*fmt == 0) break;
+        if (*fmt == '%') {
+            if (fmt[1] == '%') out.push('%'), fmt += 2;
+            else               break;
+        }else
+            out.push(*fmt++);
+    }
+}
+
+
+template<bool newline, bool flush, bool lock>
+struct Formater {
+    Out*           out;
+    mutable cchar* fmt;     // -- hack to get around passing temporaries through reference (must be const)
+
+    Formater(const Formater&) = delete;
+    Formater(Formater&& other) { out = other.out; fmt = other.fmt; other.out = (Out*)1; }
+
+    Formater(Out& out_, cchar* fmt_) : out(&out_), fmt(fmt_) {
+        if (lock){ ZZ_Acquire_Lock(console); }
+        writeUntilFormatChar(fmt, *out);
+    }
+
+   ~Formater() {
+        if (out == (Out*)1) return;
+        assert(*fmt == 0 && "---FORMAT--- Fewer arguments than '%_'s"); // -- Fails if too FEW arguments are provided for given format
+        if (newline) (*out) += '\n';
+        if (flush) out->flush();
+        if (lock){ ZZ_Release_Lock(console); }
+    }
+};
+
+macro Formater<0,0,0> operator%=(Out& out, cchar* fmt) { return Formater<0,0,0>(out, fmt); }    // -- just formatting
+macro Formater<1,0,0> operator/=(Out& out, cchar* fmt) { return Formater<1,0,0>(out, fmt); }    // -- "a line" for auto-newline
+
+macro Formater<0,1,0> operator&=(Out& out, cchar* fmt) { return Formater<0,1,0>(out, fmt); }    // -- console formatting = auto-flush + locking
+macro Formater<1,1,0> operator|=(Out& out, cchar* fmt) { return Formater<1,1,0>(out, fmt); }    // -- console formatting, with auto-newline
+
+macro Formater<0,1,1> operator*=(Out& out, cchar* fmt) { return Formater<0,1,1>(out, fmt); }    // -- console formatting = auto-flush + locking
+macro Formater<1,1,1> operator-=(Out& out, cchar* fmt) { return Formater<1,1,1>(out, fmt); }    // -- console formatting, with auto-newline
+
+macro bool isAlignmentChar(char c){ return c >= '<' && c <= '>'; }
+
+extern String formater_tmp_out;
+void writeAligned(Out& out, const String& text, Str align);
+
+
+template<class T>
+macro void applyFormat(cchar*& fmt, Out& out, const T& x)
+{
+    assert(*fmt == '%' && "---FORMAT--- More arguments than '%_'s");  // -- Fails if too MANY arguments are provided for given format
+    fmt++;
+    assert(*fmt != '%');
+
+    if (*fmt == '_'){
+        fmt++;
+        operator+=(out, x);
+    }else{
+        // Read format string:
+        cchar* start = fmt;
+        if (isAlignmentChar(*start)){
+            while (*fmt != '%'){ assert(*fmt != 0); fmt++; }          // -- Fails if alignment spec. is missing the second '%'
+            fmt++;
+            cchar* mid = fmt;
+            while (!isIdentChar0(*fmt)){ assert(*fmt != 0); fmt++; }  // -- Fails if letter is missing after '%'
+            fmt++;
+            if (mid+1 == fmt && *mid == '_')
+                write_(formater_tmp_out, x);
+            else
+                write_(formater_tmp_out, x, slice(*mid, *fmt));
+            writeAligned(out, formater_tmp_out, slice(*start, *mid));
+            formater_tmp_out.clear();
+        }else{
+            while (!isIdentChar0(*fmt)){ assert(*fmt != 0); fmt++; }  // -- Fails if letter is missing after '%'
+            fmt++;
+            if (start+1 == fmt && *start == '_')
+                write_(out, x);
+            else
+                write_(out, x, slice(*start, *fmt));
+        }
+    }
+
+    writeUntilFormatChar(fmt, out);
+}
+
+
+template<bool nl, bool fl, bool lo, class T> macro const Formater<nl,fl,lo>& operator,(const Formater<nl,fl,lo>& F, const T& x)
+{
+    applyFormat(F.fmt, *F.out, x);
+    return F;
+}
+
+
+//=================================================================================================
+// -- Exception throwing version:
+
+
+template<class X>   // -- 'X' should have constructor 'X(String)' (see eg. 'Excp_Msg').
+struct ExcpFormater {
+    String*        out;
+    mutable cchar* fmt;     // -- hack to get around passing temporaries through reference (must be const)
+    ExcpFormater(cchar* fmt_) : fmt(fmt_) {
+        out = new String;
+        writeUntilFormatChar(fmt, *out); }
+
+   ~ExcpFormater() {
+        assert(*fmt == 0 && "---FORMAT--- Fewer arguments than '%_'s");  // -- Fails if too FEW arguments are provided for given format
+        X excp(*out);
+        delete out;
+        throw excp; }
+};
+
+
+template<class X, class T> macro const ExcpFormater<X>& operator,(const ExcpFormater<X>& F, const T& x)
+{
+    applyFormat(F.fmt, *F.out, x);
+    return F;
+}
+
+
+#define Throw(X) (ExcpFormater<X>)
+// -- Example usage: Throw(Excp_Msg) "Missing %c at line %d.", chr, line_no;
+
+
+//=================================================================================================
+// -- String generating version:
+
+
+struct StringFormater {
+    mutable String out;     // -- hack to get around passing temporaries through reference (must be const)
+    mutable cchar* fmt;
+    StringFormater(cchar* fmt_) : fmt(fmt_) { writeUntilFormatChar(fmt, out); }
+   ~StringFormater() { assert(*fmt == 0 && "---FORMAT--- Fewer arguments than '%_'s"); }  // -- Fails if too FEW arguments are provided for given format
+
+    operator String() const { return out; }
+};
+
+
+template<class T> macro const StringFormater& operator,(const StringFormater& F, const T& x)
+{
+    applyFormat(F.fmt, F.out, x);
+    return F;
+}
+
+
+template<> fts_macro void write_(Out& out, const StringFormater& x) {
+    return write_(out, String(x)); }
+
+
+#define FMT (StringFormater)
+
+
+//=================================================================================================
+// -- 'FMT_TAIL' tag:
+
+
+// USAGE: out += x, y, FMT_TAIL % <format string>, <args>;
+
+struct Pre_Formater_Tag {};
+
+struct Pre_Formater {
+    cchar* fmt;
+    Pre_Formater(cchar* fmt_) : fmt(fmt_) {}
+};
+
+macro Pre_Formater operator%(Pre_Formater_Tag, cchar* fmt) {
+    return Pre_Formater(fmt); }
+
+macro Formater<0,0,0> operator+=(Out& out, Pre_Formater P) { return Formater<0,0,0>(out, P.fmt); }
+macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0,0>(out, P.fmt); }
+
+#define FMT_TAIL Pre_Formater_Tag()
+
+
+//=================================================================================================
+// -- Convenience macros:
+
+
+#define QWrite   std_out &=         // -- quick version; no locking
+#define QWriteLn std_out |=
+#define QShout   std_err &=
+#define QShoutLn std_err |=
+#define QNewLine std_out += NL
+
+#define Write   std_out *=          // -- atomic version (for threaded programs)
+#define WriteLn std_out -=
+#define Shout   std_err *=
+#define ShoutLn std_err -=
+#define WriteObj(c) (ZZ_Acquire_Lock(console), (void)(std_out += c), ZZ_Release_Lock(console))
+#define NewLine (ZZ_Acquire_Lock(console), (void)(std_out += NL), ZZ_Release_Lock(console))
+
+#define FWrite(  out) out %=        // -- no auto-flushing for "file" writing.
+#define FWriteLn(out) out /=
+#define FNewLine(out) out += '\n'
+
+#define FFWrite(  out) out &=       // -- "file" writing with flushing
+#define FFWriteLn(out) out |=
+#define FFNewLine(out) out += NL
+
+#if defined(__GNUC__) || defined(sun)
+    #define Dump(args...) std_out |= formatDumpArgs(#args).c_str(), args
+    String formatDumpArgs(cchar* text);
+    #define EDump(args...) std_err |= formatDumpArgs(#args).c_str(), args
+    String formatDumpArgs(cchar* text);
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Miscellaneous:
+
+
+template<class STR, class T>
+void join(STR sep, const Vec<T>& fields, Out& out = std_out)
+{
+    if (fields.size() == 0)
+        return;
+
+    write_(out, fields[0]);
+    for (uind i = 1; i < fields.size(); i++){
+        write_(out, sep);
+        write_(out, fields[i]);
+    }
+}
+
+
+//- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+template<class V1, class V2>
+struct Fmt_Zip2 {
+    cchar*    fmt;
+    const V1& vec1;
+    const V2& vec2;
+    Fmt_Zip2(cchar* fmt_, const V1& vec1_, const V2& vec2_) :
+        fmt(fmt_), vec1(vec1_), vec2(vec2_) {}
+};
+
+
+template<class V1, class V2>
+fts_macro Fmt_Zip2<V1,V2> zipf(cchar* fmt, const V1& vec1, const V2& vec2) {
+    return Fmt_Zip2<V1,V2>(fmt, vec1, vec2); }
+
+
+template<class V1, class V2>
+fts_macro void write_(Out& out, const Fmt_Zip2<V1,V2>& v)
+{
+    assert(v.vec1.size() == v.vec2.size());
+    out += '{';
+    for (uind i = 0; i < v.vec1.size(); i++){
+        if (i != 0) out += "; ";
+        FWrite(out) v.fmt, v.vec1[i], v.vec2[i];
+    }
+    out += '}';
+}
+
+
+struct ScopedWriteIndent {
+    cchar* end_marker;
+    ScopedWriteIndent(cchar* start_marker, cchar* end_marker) : end_marker(end_marker) { Write "\t+\t+%_", start_marker; }
+   ~ScopedWriteIndent() { Write "\t-\t-%_", end_marker; }
+};
+
+
+#define WrIndent(start, end) ScopedWriteIndent ScopedWriteIndent_dummy_ ## __LINE__ (start, end);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// C++11, finally a decent syntax!
+
+
+#if (__cplusplus >= 201103L)
+
+inline void formattedWrite_rec(Out& out, cchar*& fmt){ writeUntilFormatChar(fmt, out); }
+
+template<class T, typename... Args>
+void formattedWrite_rec(Out& out, cchar*& fmt, T const& t, Args&&... args){
+    writeUntilFormatChar(fmt, out);
+    applyFormat(fmt, out, t);
+    formattedWrite_rec(out, fmt, forward<Args>(args)...);
+}
+
+
+template<typename... Args>
+void formattedWrite(Out& out, cchar* fmt, Args&&... args) {
+    formattedWrite_rec(out, fmt, forward<Args>(args)...);
+    assert(*fmt == 0 && "---FORMAT--- Fewer arguments than '%_'s");
+}
+
+
+#define TArgs template<typename... Args>
+//#define DArgs Args&&... args
+//#define FArgs forward<Args>(args)...
+#define DArgs Args const&... args
+#define FArgs args...
+
+// Stream, no-flushing
+TArgs inline void wr  (Out& out, cchar* fmt, DArgs) { formattedWrite(out, fmt, FArgs); }
+TArgs inline void wrLn(Out& out, cchar* fmt, DArgs) { formattedWrite(out, fmt, FArgs); out += '\n'; }
+inline       void newLn(Out& out)                   { out += '\n'; }
+
+// Stdout, locking, flushing
+TArgs inline void wr  (cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out.flush(); }
+TArgs inline void wrLn(cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out += '\n'; std_out.flush(); }
+inline       void newLn()                { ZZ_Acquire_Lock(console); std_out += '\n'; std_out.flush(); }
+
+// Stderr, locking, flushing
+TArgs inline void shout  (cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err.flush(); }
+TArgs inline void shoutLn(cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err += '\n'; std_err.flush(); }
+
+// Stdout, no-locking, flushing
+TArgs inline void wr_quick  (cchar* fmt, DArgs) { formattedWrite(std_out, fmt, FArgs); }
+TArgs inline void wrLn_quick(cchar* fmt, DArgs) { formattedWrite(std_out, fmt, FArgs); std_out += '\n'; }
+inline void       newLn_quick()                 { std_out += '\n'; }
+
+// Stream, flushing
+TArgs inline void wr_flush  (Out& out, cchar* fmt, DArgs) { formattedWrite(out, fmt, FArgs); out.flush(); }
+TArgs inline void wrLn_flush(Out& out, cchar* fmt, DArgs) { formattedWrite(out, fmt, FArgs); out += '\n'; out.flush(); }
+inline void       newLn_flush(Out& out)                   { out += '\n'; out.flush(); }
+
+// Format to 'String':
+TArgs String fmt(cchar* fmt, DArgs) { String out; wr(out, fmt, FArgs); return out; }
+
+#undef TArgs
+#undef DArgs
+#undef FArgs
+
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

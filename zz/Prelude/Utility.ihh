@@ -1,0 +1,979 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Utility.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Various helper functions.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//| This module is still in a very preliminary state. Especially the string handling is expected
+//| to be replaced with something more solid once I have the time.
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+#if defined(_MSC_VER)
+macro int strcasecmp (cchar* s1, cchar* s2)           { return stricmp(s1, s2); }
+macro int strncasecmp(cchar* s1, cchar* s2, size_t n) { return strnicmp(s1, s2, n); }
+char* getcwd(char* buf, size_t size);
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Standard streams:
+
+
+struct StdInReader : Reader {
+    uind getChars(char* data, uind bytes_wanted) {
+        for (uind i = 0; i < bytes_wanted; i++){
+            int chr = getchar();
+            if (chr == EOF)
+                return i;
+            data[i] = chr;
+        }
+        return bytes_wanted;
+    }
+};
+
+
+struct StdOutWriter : Writer {
+    void putChars(cchar* data, uind size) {
+        writeChars(data, size, true);
+    }
+};
+
+
+struct StdErrWriter : Writer {
+    void putChars(cchar* data, uind size) {
+        writeChars(data, size, false);
+    }
+};
+
+
+extern StdInReader  std_in_reader;
+extern StdOutWriter std_out_writer;
+extern StdErrWriter std_err_writer;
+extern Out          std_out;
+extern Out          std_err;
+
+// To get a buffered standard input stream, use:
+//
+//     In in(std_in_reader)
+//
+// There is no way of reading standard input unbuffered through a 'In' stream. For that reason
+// we cannot open it by default (program would immediately halt and wait for input on stdin).
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Files and directories:
+
+
+uint64      fileSize(String filename);
+macro bool  fileExists(String filename) { return fileSize(filename) != UINT64_MAX; }
+void        readFile(File& in, Vec<char>& out, bool close_stream = false, size_t initial_reserve = 0, bool add_null = false);
+Array<char> readFile(File& in, bool close_stream = false, size_t initial_reserve = 0, bool add_null = false);
+bool        readFile(String filename, Vec<char>& out, bool add_null = false);   // -- returns FALSE if file did not exist
+Array<char> readFile(String filename, bool add_null = false);
+bool        writeFile(String filename, Array<char> data);
+
+void        readLine(In&   in, Vec<char>& out_text);     // }
+void        readLine(File& in, Vec<char>& out_text);     // }- Clears 'out_text'. No '\0' added at the end.
+void        readLine(FILE* in, Vec<char>& out_text);     // }
+
+int         tmpFile(cchar* prefix, String& out_name);
+
+String      dateAndTimeText();
+
+
+#if defined(_MSC_VER)
+String dirName(const String& filename);
+String baseName(const String& filename);
+#else
+macro String dirName(const String& filename) {
+    return String(dirname(String(filename).c_str())); }
+    // -- "String()" is needed to make a copy; 'dirname()' is destructive.
+
+macro String baseName(const String& filename) {
+    return String(basename(String(filename).c_str())); }
+#endif
+
+macro String currDir() {
+    char* dir = getcwd(NULL, 0);
+    String ret(dir);
+    free(dir);
+    return ret; }
+
+
+//- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+struct FileInfo {
+    String name;
+    String full;    // Full name with path.
+    uint64 size;
+    int64  date;
+    FileInfo(String name_, String full_, uint64 size_, time_t date_) : name(name_), full(full_), size(size_), date(date_) {}
+};
+
+
+bool readDir(String path, Vec<FileInfo>& files, Vec<FileInfo>& dirs, Vec<FileInfo>* others = NULL);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// 'printf' style operations:
+
+
+void pf(cchar* format, ...) ___format(printf, 1, 2);
+    // -- 'printf' replacement. Will go through ANSI filtering in 'Console.icc'. Will flush
+    // stream at each call.
+
+void pe(cchar* format, ...) ___format(printf, 1, 2);
+    // -- 'fprintf(stderr, ...)' replacement. Writes to 'stderr' using 'Console.icc'. Will flush
+    // stream at each call.
+
+char* vnsprintf(cchar* format, va_list args) ___malloc;
+    // -- print to a newly allocated string using 'va_list' (helpful for implementing other
+    // printf-like functions.
+
+char* nsprintf(cchar* format, ...) ___format(printf, 1, 2) ___malloc;
+    // -- print to a newly allocated string (using 'xmalloc()', free with 'xfree()').
+
+String stringf(cchar* format, ...) ___format(printf, 1, 2);
+    // -- print to a 'String'.
+
+void pushf(Vec<char>& out, cchar* format, ...) ___format(printf, 2, 3);
+void pushf(Vec<uchar>& out, cchar* format, ...) ___format(printf, 2, 3);
+    // -- push output onto a character vector.
+
+
+macro char* xdupStr(cchar* src) ___malloc;  // -- string duplication with 'xmalloc()'
+macro char* xdupStr(cchar* src) {
+    size_t size = strlen(src)+1;
+    char*  tmp = xmalloc<char>(size);
+    memcpy(tmp, src, size);
+    return tmp; }
+
+macro char* xdupPfx(cchar* src, size_t len) ___malloc;
+macro char* xdupPfx(cchar* src, size_t len) {
+    size_t size;
+    for (size = 0; size < len && src[size] != 0; size++);
+    char* tmp = xmalloc<char>(size+1);
+    memcpy(tmp, src, size);
+    tmp[size] = 0;
+    return tmp; }
+
+macro char* xdupStr(const String& src) ___malloc;
+macro char* xdupStr(const String& src){
+    return xdupPfx(src.base(), src.size()); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Sleep:
+
+
+macro void dsleep(double time)
+{
+  #if defined(_MSC_VER)
+    Sleep(DWORD(time * 1000));
+  #else
+    usleep(useconds_t(time * 1000000));
+  #endif
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// String and vector comparison:
+
+
+// Version of 'slice()' function only applicable to string type. Does a 'slize' automatically
+// for zero-terminated 'char*' and 'const char*'s.
+//
+macro Str strSlice(const Str& text)         { return text; }
+macro Str strSlice(const Array<char>& text) { return static_cast<const Str&>(text); }
+macro Str strSlice(const String& text)      { return slice(text); }
+macro Str strSlice(const Vec<char>& text)   { return slice(text); }
+macro Str strSlice(cchar* text)             { return slize(text); }
+
+
+template <class S, class T>
+fts_macro bool eq(const S& s, const T& t) {
+    return vecEqual(strSlice(s), strSlice(t)); }
+
+template <class S, size_t len>
+fts_macro bool eq(const S& s, cchar t[len]) {
+    for (uind i = 0; i < s.size(); i++)
+        if (s[i] != t[i] || t[i] == 0) return false;
+    return true; }
+
+template <class S, size_t len>
+fts_macro bool eq(cchar t[len], const S& s) {
+    return eq(s, t); }
+
+macro bool pfx_(cchar* text, cchar* pre) {
+    for (; *pre; text++, pre++)
+        if (*text != *pre) return false;
+    return true; }
+macro bool pfx(char*  text, cchar* pre) { return pfx_(text, pre); }
+macro bool pfx(cchar* text, cchar* pre) { return pfx_(text, pre); }
+
+template <class S>
+fts_macro bool pfx(const S& text, cchar* pfx) {
+    for (uind i = 0; pfx[i]; i++)
+        if (i == text.size() || text[i] != pfx[i]) return false;
+    return true; }
+
+template <class S, class T>
+fts_macro bool pfx(const S& text, const T& pfx) {
+    return vecHasPrefix(strSlice(text), strSlice(pfx)); }
+
+template <class S, class T>
+fts_macro bool suf(const S& text, const T& pfx) {
+    return vecHasSuffix(strSlice(text), strSlice(pfx)); }
+
+
+macro bool eqi(const String&  v, const String&  w) { return (v.size() == w.size()) && strncasecmp(v.base(), w.base(), v.size()) == 0; }
+macro bool eqi(cchar* s, cchar* t) { return strcasecmp(s, t) == 0; }
+
+macro bool hasSuffix(const String& text, const String& suff) { return suf(text, suff); }
+macro bool hasPrefix(const String& text, const String& pref) { return pfx(text, pref); }
+    // -- legacy names
+
+// Remove 'suff' from end of 'text', if present.
+macro bool stripSuffix(String& text, const String& suff)
+{
+    if (hasSuffix(text, suff)){
+        text.shrinkTo(text.size() - suff.size());
+        return true;
+    }else
+        return false;
+}
+
+
+// Gzip-aware extension handling:
+macro bool hasExtension(String filename, String ext) {          // -- specify without '.'
+    return hasSuffix(filename, String(".") + ext)
+        || hasSuffix(filename, String(".") + ext + String(".gz")); }
+
+macro String setExtension(String filename, String new_ext) {    // -- specify without '.'
+    String tmp = filename;
+    bool   gzip = false;
+    if (hasSuffix(tmp, ".gz")){
+        gzip = true;
+        tmp.shrinkTo(tmp.size() - 3);
+    }
+    for (uind i = tmp.size(); i > 0;){ i--;
+        if (tmp[i] == '.'){
+            // Found '.', replace tail with new extension:
+            tmp.shrinkTo(i);
+            break;
+        }
+    }
+    tmp.push('.');
+    for (uind i = 0; i < new_ext.size(); i++) tmp.push(new_ext[i]);
+    if (gzip){ tmp.push('.'); tmp.push('g'); tmp.push('z'); }
+    return tmp;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Arrays:
+
+
+// Splits an array on elements in 'seps'. Multiple contiguous separators are considered as one
+// separator (so "hello,,world" split on comma will return two elements, not three). Leading and
+// trailing separators are ignored (",hello,,world,,," still returns two elements).
+template<class T>
+void splitArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+{
+    out.clear();
+    if (text.null()) return;
+
+    uind i = 0;
+    for(;;){
+        if (i == text.size()) return;
+        if (!has(seps, text[i])) break;
+        ++i;
+    }
+
+    uind start = i;
+    for(;;){
+        if (i == text.size() || has(seps, text[i])){
+            out.push(slice(text[start], *(text.base() + i)));    // -- avoid out of bounds error in debug mode
+            for(;;){
+                if (i == text.size()) return;
+                if (!has(seps, text[i])) break;
+                ++i;
+            }
+            start = i;
+
+        }else
+            ++i;
+    }
+}
+
+
+macro void splitArray(Str text, cchar* seps, Vec<Str>& out) {   // -- convenient to use constant string for 'seps'
+    splitArray(text, slize(seps), out); }
+
+
+// Important special case; let's allow some code duplication:
+template<class T>
+void splitArray(Array<T> text, char sep, Vec<Array<T> >& out)
+{
+    out.clear();
+    if (text.null()) return;
+
+    uind i = 0;
+    for(;;){
+        if (i == text.size()) return;
+        if (sep != text[i]) break;
+        ++i;
+    }
+
+    uind start = i;
+    for(;;){
+        if (i == text.size() || sep == text[i]){
+            out.push(slice(text[start], *(text.base() + i)));    // -- avoid out of bounds error in debug mode
+            for(;;){
+                if (i == text.size()) return;
+                if (sep != text[i]) break;
+                ++i;
+            }
+            start = i;
+
+        }else
+            ++i;
+    }
+}
+
+// Same as 'splitArray()' but don't merge contigous separators ("hello,,world" split on
+// comma will return *three* element, the second one a zero-length string). NOTE! An empty input
+// 'text' will return an 'out' vector with one element (a zero-length array).
+template<class T>
+void strictSplitArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+{
+    out.clear();
+    if (text.null()) return;
+
+    uind start = 0;
+    uind i = 0;
+    for(;;){
+        if (i == text.size()){
+            out.push(slice(text[start], text[i]));
+            break;
+        }else if (has(seps, text[i])){
+            out.push(slice(text[start], text[i]));
+            ++i;
+            start = i;
+        }else
+            ++i;
+    }
+}
+
+macro void strictSplitArray(Str text, cchar* seps, Vec<Str>& out) {
+    strictSplitArray(text, slize(seps), out); }
+
+
+// Tokenize 'text' into length-one strings from 'seps' and non-zero length strings in between.
+template<class T>
+void tokenizeArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+{
+    out.clear();
+    if (text.null()) return;
+
+    uind start = 0;
+    uind i = 0;
+    for(;;){
+        if (i == text.size()){
+            if (start != i)
+                out.push(slice(text[start], text[i]));
+            break;
+        }else if (has(seps, text[i])){
+            if (start != i)
+                out.push(slice(text[start], text[i]));
+            out.push(slice(text[i], text[i+1]));
+            ++i;
+            start = i;
+        }else
+            ++i;
+    }
+}
+
+macro void tokenizeArray(Str text, cchar* seps, Vec<Str>& out) {
+    tokenizeArray(text, slize(seps), out); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Random numbers:
+
+
+// These functions provide fast, low-quality pseudo-random values. They are meant to be used in
+// randomized algorithms, NOT for simulation or anything that requires high quality pseudo-random
+// numbers.
+
+//  - Largest prime < 2^64: 18446744073709551557
+//  - A prime ~= 2^64 / 3:   6148914691236517205
+
+
+// Helper function -- advance seed (don't use directly)
+macro void nextSeed(uint64& seed) {
+    seed = ((seed + 1) * 6148914691236517205ull);
+    seed = (seed >> 32) | (seed << 32); }
+
+
+// Random 64-bit integer between 0 and '2^64-1'.
+macro uint64 irandl(uint64& seed) {
+    nextSeed(seed);
+    return seed; }
+
+
+// Random 64-bit integer between 0 and 'size-1'.
+macro uint64 irandl(uint64& seed, uint64 size) {
+    nextSeed(seed);
+    return seed % size; }
+
+
+// Random 32-bit integer between 0 and 'size-1'.
+macro uint irand(uint64& seed, uint size) {
+    return (uint)irandl(seed, size); }
+
+
+// Returns a random float 0 <= x < 1.
+macro double drand(uint64& seed) {
+    nextSeed(seed);
+    return (seed & 0xFFFFFFFFFFFFFull) / 4503599627370496.0; }
+
+
+// Produce a new seed (with a different future) from an existing.
+macro uint64 splitSeed(uint64 seed) {
+    return seed * 3467255ull; }
+
+
+// Create a seed from real time clock.
+macro uint64 generateSeed() {
+    return realTimeAbs(); }
+
+
+static const uint64 DEFAULT_SEED = 942068396192179ull;
+
+
+//=================================================================================================
+// -- randomize the order of a vector:
+
+
+template<class V>
+void shuffle(uint64& seed, V& v)
+{
+    for (uind i = 0; i < v.size(); i++){
+        uind j = (uind)irandl(seed, v.size() - i) + i;
+        swp(v[i], v[j]);
+    }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Parsing numbers as text:
+
+
+struct Excp_ParseNum : Excp {
+    enum Type { EmptyString, Overflow, OutOfRange, IllFormed, Type_size };
+    static cchar* Type_name[Type_size];
+    Type   type;
+    Excp_ParseNum(Type type_) : type(type_) {}
+};
+
+
+uint64 parseUInt64(cchar*& ptr) /*throw(Excp_ParseNum)*/;
+int64  parseInt64 (cchar*& ptr) /*throw(Excp_ParseNum)*/;
+double parseDouble(cchar*& ptr) /*throw(Excp_ParseNum)*/;
+uint64 parseUInt64(In&     ptr) /*throw(Excp_ParseNum)*/;
+int64  parseInt64 (In&     ptr) /*throw(Excp_ParseNum)*/;
+double parseDouble(In&     ptr) /*throw(Excp_ParseNum)*/;
+    // -- Basic number parsers.
+
+uint64 parseUInt64(cchar*& ptr, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/;
+int64  parseInt64 (cchar*& ptr, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/;
+double parseDouble(cchar*& ptr, double lo, double hi, bool lo_strict = false, bool hi_strict = false) /*throw(Excp_ParseNum)*/;
+uint64 parseUInt64(In&     ptr, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/;
+int64  parseInt64 (In&     ptr, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/;
+double parseDouble(In&     ptr, double lo, double hi, bool lo_strict = false, bool hi_strict = false) /*throw(Excp_ParseNum)*/;
+    // -- Range checked versions.
+
+macro uint   parseUInt  (cchar*& ptr) /*throw(Excp_ParseNum)*/ { return (uint)  parseUInt64(ptr, 0, UINT_MAX); }
+macro int    parseInt   (cchar*& ptr) /*throw(Excp_ParseNum)*/ { return (int)   parseInt64 (ptr, INT_MIN, INT_MAX); }
+macro ushort parseUShort(cchar*& ptr) /*throw(Excp_ParseNum)*/ { return (ushort)parseUInt64(ptr, 0, USHRT_MAX); }
+macro short  parseShort (cchar*& ptr) /*throw(Excp_ParseNum)*/ { return (short) parseInt64 (ptr, SHRT_MIN, SHRT_MAX); }
+macro uint   parseUInt  (In&     ptr) /*throw(Excp_ParseNum)*/ { return (uint)  parseUInt64(ptr, 0, UINT_MAX); }
+macro int    parseInt   (In&     ptr) /*throw(Excp_ParseNum)*/ { return (int)   parseInt64 (ptr, INT_MIN, INT_MAX); }
+macro ushort parseUShort(In&     ptr) /*throw(Excp_ParseNum)*/ { return (ushort)parseUInt64(ptr, 0, USHRT_MAX); }
+macro short  parseShort (In&     ptr) /*throw(Excp_ParseNum)*/ { return (short) parseInt64 (ptr, SHRT_MIN, SHRT_MAX); }
+    // -- Convenience functions for smaller types.
+
+macro uint64 stringToUInt64(cchar* text) /*throw(Excp_ParseNum)*/ { uint64 ret = parseUInt64(text); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro int64  stringToInt64 (cchar* text) /*throw(Excp_ParseNum)*/ { int64  ret = parseInt64 (text); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro double stringToDouble(cchar* text) /*throw(Excp_ParseNum)*/ { double ret = parseDouble(text); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro uint64 stringToUInt64(String text) /*throw(Excp_ParseNum)*/ { return stringToUInt64(text.c_str()); }
+macro int64  stringToInt64 (String text) /*throw(Excp_ParseNum)*/ { return stringToInt64 (text.c_str()); }
+macro double stringToDouble(String text) /*throw(Excp_ParseNum)*/ { return stringToDouble(text.c_str()); }
+macro uint64 stringToUInt64(Str    text) /*throw(Excp_ParseNum)*/ { In in(text); uint64 ret = parseUInt64(in); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro int64  stringToInt64 (Str    text) /*throw(Excp_ParseNum)*/ { In in(text); int64  ret = parseInt64 (in); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro double stringToDouble(Str    text) /*throw(Excp_ParseNum)*/ { In in(text); double ret = parseDouble(in); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+    // -- Parsing without updating pointer. Requires that the whole string is used.
+
+macro uint64 stringToUInt64(cchar* text, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/ { uint64 ret = parseUInt64(text, lo, hi); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro int64  stringToInt64 (cchar* text, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/ { int64  ret = parseInt64 (text, lo, hi); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro double stringToDouble(cchar* text, double lo, double hi, bool lo_strict = false, bool hi_strict = false) /*throw(Excp_ParseNum)*/ { double ret = parseDouble(text, lo, hi, lo_strict, hi_strict); if (*text != 0) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro uint64 stringToUInt64(String text, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/ { return stringToUInt64(text.c_str(), lo, hi); }
+macro int64  stringToInt64 (String text, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/ { return stringToInt64 (text.c_str(), lo, hi); }
+macro double stringToDouble(String text, double lo, double hi, bool lo_strict = false, bool hi_strict = false) /*throw(Excp_ParseNum)*/ { return stringToDouble(text.c_str(), lo, hi, lo_strict, hi_strict); }
+macro uint64 stringToUInt64(Str    text, uint64 lo, uint64 hi) /*throw(Excp_ParseNum)*/ { In in(text); uint64 ret = parseUInt64(in, lo, hi); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro int64  stringToInt64 (Str    text, int64  lo, int64  hi) /*throw(Excp_ParseNum)*/ { In in(text); int64  ret = parseInt64 (in, lo, hi); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+macro double stringToDouble(Str    text, double lo, double hi, bool lo_strict = false, bool hi_strict = false) /*throw(Excp_ParseNum)*/ { In in(text); double ret = parseDouble(in, lo, hi, lo_strict, hi_strict); if (!in.eof()) throw Excp_ParseNum(Excp_ParseNum::IllFormed); return ret; }
+    // -- Parsing without updating pointer: range checked version.
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Printing numbers (and strings) as text:
+
+
+macro void printString(Out& out, cchar* text) { cchar* p = text;         while (*p) out.push(*p++); }
+macro void printString(Out& out, String text) { cchar* p = text.c_str(); while (*p) out.push(*p++); }
+macro void printString(Out& out, Str    text) { cchar* p = text.base();  while (p != &text.end_()) out.push(*p++); }
+
+void printUInt(Out& out, uint64 num);
+void printInt (Out& out, int64  num);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Binary reading/writing of integers:
+
+
+macro void putUInt(Out& out, uint64 x)
+{
+    while (x >= 0x80){
+        out.push(uchar(x) | 0x80);
+        x >>= 7; }
+    out.push(uchar(x));
+}
+
+
+macro uint64 getUInt(In& in) /*throw(Excp_EOF)*/
+{
+    uint   shift = 0;
+    uint64 value = 0;
+    for(;;){
+        if (in.eof()) throw Excp_EOF();
+        uchar x = in.scan();
+        value |= uint64(x & 0x7F) << shift;
+        if (x < 0x80) return value;
+        shift += 7;
+    }
+}
+
+
+macro void putInt(Out& out, int64 x)
+{
+    if (x >= 0)
+        putUInt(out, uint64(x) << 1);
+    else
+        putUInt(out, (uint64(-x) << 1) | uint64(1));
+}
+
+
+macro int64 getInt(In& in) /*throw(Excp_EOF)*/
+{
+    uint64 x = getUInt(in);
+    if (!(x & 1))
+        return x >> 1;
+    else
+        return -(x >> 1);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Short names for marshaling purposes:
+
+
+macro void putu(Out& out, uint64 num) { putUInt(out, num); }
+macro void puti(Out& out, uint64 num) { putInt(out, num); }
+macro void putc(Out& out, char c)     { out.push(c); }
+macro void putb(Out& out, uchar c)    { out.push((char)c); }  // - 'b' for byte
+
+macro uint64 getu(In& in) { return getUInt(in); }
+macro uint64 geti(In& in) { return getInt(in); }
+macro char   getc(In& in) { return in.scan(); }
+macro uchar  getb(In& in) { return (uchar)in.scan(); }
+
+// Put string using zero-terminatation:
+macro void putz(Out& out, cchar* s) { while (*s != 0) out.push(*s++); out.push(0); }
+macro void putz(Out& out, String s) { putz(out, s.c_str()); }
+macro void putz(Out& out, Str    s) {
+    if (!s) out.push(0);    // -- will be parsed back as an empty string rather than 'Str_NULL'
+    else{ for (uind i = 0; i < s.size(); i++){ assert_debug(s[i] != 0); out.push(s[i]); } out.push(0); } }
+
+macro void getz(In& in, Vec<char>& result) {
+    result.clear();
+    for(;;){
+        if (*in == 0){ in++; return; }
+        result.push(in++); } }
+
+macro String getZ(In& in) {
+    Vec<char> tmp;
+    getz(in, tmp);
+    return String(tmp); }
+
+macro void putF(Out& out, float f) {
+    union { float num; uchar data[4]; } tmp;
+    tmp.num = f;
+    putc(out, tmp.data[0]); putc(out, tmp.data[1]); putc(out, tmp.data[2]); putc(out, tmp.data[3]); }
+
+macro float getF(In& in) {
+    union { float num; uchar data[4]; } tmp;
+    tmp.data[0] = getc(in); tmp.data[1] = getc(in); tmp.data[2] = getc(in); tmp.data[3] = getc(in);
+    return tmp.num; }
+
+template <class T>
+fts_macro void put(Out& out, const T& t) {
+    cchar* data = reinterpret_cast<cchar*>(&t);
+    for (uint i = 0; i < sizeof(T); i++)
+        out.push(data[i]);
+}
+
+template <class T>
+fts_macro void get(In& in, T& t) {
+    char* data = reinterpret_cast<char*>(&t);
+    for (uint i = 0; i < sizeof(T); i++)
+        data[i] = in.scan();
+}
+
+template <class T>
+fts_macro void get(In& in) {
+    T ret;
+    get(in, ret);
+    return ret;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Parsing primitives:
+
+
+Declare_Exception(Excp_ParseError);
+
+macro bool isZero(char c) { return c == 0; }
+macro bool isSpace(char c) { return c == 32; }
+macro bool isWS(char c) { return (c >= 8 && c <= 13) || c == 32; }
+macro bool isNL(char c) { return c == 10; }
+macro bool isUpAlpha(char c) { return (c >= 'A') && (c <= 'Z'); }
+macro bool isLoAlpha(char c) { return (c >= 'a') && (c <= 'z'); }
+macro bool isAlpha(char c) { return isUpAlpha(c) || isLoAlpha(c); }
+macro bool isDigit(char c) { return (c >= '0') && (c <= '9'); }
+macro bool isIdentChar0(char c) { return isAlpha(c) || c == '_'; }
+macro bool isIdentChar(char c) { return isIdentChar0(c) || isDigit(c); }
+
+struct IsChar {
+    char chr;
+    IsChar(char chr_) : chr(chr_) {}
+    bool operator()(char c) const { return c == chr; }
+};
+
+struct IsChar2 {
+    char chr1, chr2;
+    IsChar2(char chr1_, char chr2_) : chr1(chr1_), chr2(chr2_) {}
+    bool operator()(char c) const { return c == chr1 || c == chr2; }
+};
+
+macro void skipWS(In& in) { while (!in.eof() && isWS(*in)) in++; }
+
+macro void skipLine(In& in) {
+    for(;;){
+        if (in.eof()) return;
+        if (*in == '\n'){ in++; return; }
+        in++;
+    }
+}
+
+macro void skipEol(In& in) {
+    for(;;){
+        if (in.eof()) return;
+        char c = in++;
+        if (c == '\n') return;
+    }
+}
+
+macro void expect(In& in, cchar* text, bool space_as_ws = true) {
+    while (*text != 0){
+        if (*text == ' ' && space_as_ws){
+            skipWS(in);
+            text++;
+        }else{
+            if (*in != *text) throw Excp_ParseError(stringf("Unexpected character '%c' (expected '%c').", *in, *text));
+            in++;
+            text++;
+        }
+    }
+}
+
+
+macro void expectWS(In& in) {   // -- require at least one white-space character
+    if (in.eof() || !isWS(*in)) throw Excp_ParseError("Missing white space character.");
+    in++;
+    skipWS(in);
+}
+
+
+macro void expectNL(In& in) {   // -- expect one newline character
+    if (*in != '\n') throw Excp_ParseError("Missing newline.");
+    in++;
+}
+
+
+macro void expectEof(In& in, bool ignore_ws = true) {
+    if (ignore_ws) skipWS(in);
+    if (!in.eof()) throw Excp_ParseError("Unexpected extra characters.");
+}
+
+
+
+// Clears 'result', then reads until 'eos' returns TRUE (without consuming that character)
+// or end-of-file is reached (no error).
+template<class EosPred>
+void gets(In& in, Vec<char>& result, EosPred eos = EosPred()) {
+    result.clear();
+    for(;;){
+        if (in.eof() || eos(*in)) return;
+        result.push(in++);
+    }
+}
+
+// NOTE! 'trim' is destructive, 'strip' returns a substring 'Str'.
+
+// Remove trailing spaces and tabs.
+template<template<class> class V>
+macro void trimEnd(V<char>& text) {
+    while (text.size() > 0 && isWS(text.last())) text.pop(); }
+
+template<template<class> class V>
+macro void trimEnd(V<cchar>& text) {
+    while (text.size() > 0 && isWS(text.last())) text.pop(); }
+
+// Remove leading and trailing spaces and tabs.
+template<template<class> class V>
+macro void trim(V<char>& text) {
+    uind i = 0, j = 0;
+    while (i < text.size() && isWS(text[i])) i++;
+    while (i < text.size()) text[j++] = text[i++];
+    text.shrinkTo(j);
+    trimEnd(text); }
+
+macro void trim(String& text) { trim(static_cast<Vec<char>&>(text)); }
+
+macro void trimStr(Str& text) {     // -- will trim front by moving base pointer; must not use 'dispose()' on the resulting array.
+    while (text.sz > 0 && isWS(text[0])) text.data++, text.sz--;
+    trimEnd(text); }
+
+macro Str strip(const Str& text) {  // -- same as 'trimStr()' but non-destructive (returns new 'Str' instead)
+    Str ret = text;
+    trimStr(ret);
+    return ret; }
+
+// Get the line number (counting from 1) of the character pointed to by 'text[offset]'. If that
+// character is a newline, it is not counted (so offset 5 in string 'hello\nworld' is on line 1,
+// but offset 6 is on line 2).
+macro uind countLineNo(Str text, uind offset)
+{
+    uind line = 1;
+    for (uind i = 0; i < offset; i++)
+        if (text[i] == '\n')
+            line++;
+    return line;
+}
+
+macro uind countLineNo(Str text, Str inside_text) {
+    return countLineNo(text, inside_text.base() - text.base()); }
+
+macro uind countLineNo(In& in) {    // -- must be an in-memory stream
+    return countLineNo(slice(in), in.tell()); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Hexa-decimal digits:
+
+
+macro char toHex(uint n)
+{
+    return (n < 10) ? '0' + n : 'A' - 10 + n;
+}
+
+
+macro uint fromHex(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    else if (c >= 'a' && c <= 'f')
+        return 10 + c - 'a';
+    else if (c >= 'A' && c <= 'F')
+        return 10 + c - 'A';
+    else
+        throw Excp_ParseError(stringf("Invalid hexadecimal character '%c'.", c));
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Bit twiddling:
+
+
+// Returns the number of binary digits required to represent the number 'v',
+// Formally: 'log2(v) + 1' with 'log2(0)' defined as '-1'.
+macro
+uint bitsNeeded(uint v)
+{
+    if (v == 0) return 0;
+
+    uint r = 0;
+    uint s_mask = 16;
+    uint b_mask = 0xFFFF0000;
+    uint n = 16;
+    for(;;){
+        if (v & b_mask){
+            v >>= s_mask;
+            r  |= s_mask;
+        }
+        if (n == 1) break;
+
+        s_mask >>= 1;
+        uint tmp = b_mask >> n;
+        n >>= 1;
+        b_mask = (b_mask >> n) & tmp;
+    }
+    return r + 1;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// String handling:
+
+
+template<class STR, class ALLOC>
+macro Str strDup(const STR& text, ALLOC& mem) {
+    Array<char> s(mem.alloc(text.size()), text.size());
+    for (uint i = 0; i < text.size(); i++)
+        s[i] = text[i];
+    return s;
+}
+
+template<class STR>
+macro Str strDup(const STR& text) {
+    Array<char> s(ymalloc<char>(text.size()), text.size());
+    for (uint i = 0; i < text.size(); i++)
+        s[i] = text[i];
+    return s;
+}
+
+template<class ALLOC> macro Str strDup(char*  text, ALLOC& mem) { return strDup(slize(text), mem); }
+template<class ALLOC> macro Str strDup(cchar* text, ALLOC& mem) { return strDup(slize(text), mem); }
+macro Str strDup(char*  text) { return strDup(slize(text)); }
+macro Str strDup(cchar* text) { return strDup(slize(text)); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Generic reconstruct:
+
+
+template<class T>
+void reconstruct(T* obj)
+{
+    obj->~T();
+    new (obj) T();
+}
+
+
+template<class T>
+void reconstruct(T& obj)
+{
+    obj.~T();
+    new (&obj) T();
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Bit-twiddling:
+
+
+macro bool moreThanKBitsSet(uint word, uint k)
+{
+  #if defined(__GNUC__) && !defined(ZZ_DEBUG) && !(__GNUC__ == 4 && __GNUC_MINOR__== 6)
+    // -- note that valgrind doesn't like popcount()
+    return __builtin_popcount(word) > k;
+  #else
+    if (word == 0) return false;
+    for (uint i = 0; i < k; i++){
+        word &= word - 1;
+        if (word == 0) return false;
+    }
+    return true;
+  #endif
+}
+
+
+macro bool moreThanKBitsSet(uint64 word, uint k)
+{
+  #if defined(__GNUC__) && !defined(ZZ_DEBUG) && !(__GNUC__ == 4 && __GNUC_MINOR__== 6)
+    // -- note that valgrind doesn't like popcount()
+    return __builtin_popcountll(word) > k;
+  #else
+    if (word == 0) return false;
+    for (uint i = 0; i < k; i++){
+        word &= word - 1;
+        if (word == 0) return false;
+    }
+    return true;
+  #endif
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Raw memory operations:
+
+
+template <class T>
+inline void memClear(T& t) {
+    memset(&t, 0, sizeof(T)); }
+
+
+template <class U, class T>
+inline Array<U const> mkMemArray(T const& t) {
+    assert(sizeof(T) % sizeof(U) == 0);
+    return Array<U const>(reinterpret_cast<U const*>(&t), sizeof(T) / sizeof(U)); }
+
+
+template <class T>
+inline bool memEq(T const& t1, T const& t2) {
+    return (sizeof(T) % 8 == 0) ? vecEqual(mkMemArray<uint64>(t1), mkMemArray<uint64>(t2)) :
+           (sizeof(T) % 4 == 0) ? vecEqual(mkMemArray<uint  >(t1), mkMemArray<uint  >(t2)) :
+           (sizeof(T) % 2 == 0) ? vecEqual(mkMemArray<ushort>(t1), mkMemArray<ushort>(t2)) :
+                                  vecEqual(mkMemArray<uchar >(t1), mkMemArray<uchar >(t2)) ; }
+
+
+template <class T>
+inline uint64 memHash(T const& t) {
+    return (sizeof(T) % 8 == 0) ? defaultHash(mkMemArray<uint64>(t)) :
+           (sizeof(T) % 4 == 0) ? defaultHash(mkMemArray<uint  >(t)) :
+           (sizeof(T) % 2 == 0) ? defaultHash(mkMemArray<ushort>(t)) :
+                                  defaultHash(mkMemArray<uchar >(t)) ; }
+
+
+// Example: template<> struct Hash_default<MyType> : Hash_mem<MyType> {};
+template<class T> struct Hash_mem {
+    uint64 hash (T const& key) const { return memHash(key); }
+    bool   equal(T const& key1, T const& key2) const { return memEq(key1, key2); }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

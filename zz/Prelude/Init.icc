@@ -1,0 +1,96 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Init.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Runs global initializers.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Global variables:
+
+
+int emit_global_dependencies = 0;       // -- activate by environment variable 'ZZ_EMIT_GLOBAL_DEP'
+GlobalInitializers* global_initializers;
+GlobalInitializers* global_finalizers;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Implementation:
+
+
+// Sort on priority, then filename, then line number.
+static
+int zzInit_compare(const void* x_, const void* y_)
+{
+    const GlobalInitializers& x = **(const GlobalInitializers**)x_;
+    const GlobalInitializers& y = **(const GlobalInitializers**)y_;
+
+    if      (x.prio < y.prio) return -1;
+    else if (x.prio > y.prio) return +1;
+
+    int c = strcmp(x.file, y.file);
+    if (c != 0) return c;
+
+    return x.line_no - y.line_no;
+}
+
+
+void zzInitialize(bool finalize)
+{
+    char* debug_mode = getenv("ZZ_INIT_DEBUG");
+
+    GlobalInitializers* initializers = finalize ? global_finalizers : global_initializers;
+        // -- if 'finalize' is TRUE, the global finalizers are called instead.
+
+    // Put thunks into array 'gs[]' of size 'count':
+    uint count = 0;
+    for (GlobalInitializers* g = initializers; g; g = g->next)
+        count++;
+
+    GlobalInitializers** gs = (GlobalInitializers**)malloc(sizeof(GlobalInitializers*) * count);
+    assert(gs != NULL);
+
+    count = 0;
+    for (GlobalInitializers* g = initializers; g; g = g->next)
+        gs[count++] = g;
+
+    if (finalize){
+        for (GlobalInitializers* g = initializers; g; g = g->next)
+            g->prio = -g->prio;
+    }
+
+    // Sort according to priority:
+    qsort(gs, count, sizeof(GlobalInitializers*), zzInit_compare);
+
+    // Call initializers:
+    for (uint i = 0; i < count; i++){
+        GlobalInitializers& g = *gs[i];
+        if (debug_mode){
+            printf("fun=%p   prio=%d   tag=%s   line_no=%u   file=%s\n", g.fun, finalize ? -g.prio : g.prio, g.tag, g.line_no, g.file);
+            fflush(stdout);
+        }
+        if (g.prio != INT_MIN){
+            g.fun();
+            g.prio = INT_MIN;
+                // -- This gives some support for dynamic loading (although priority inversion
+                // is possible if you dynamically load an initializer with higher priority
+                // than one that has already been executed).
+        }
+    }
+
+    free(gs);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

@@ -1,0 +1,74 @@
+________________________________________
+
+HOL-Light Proof Analyzer
+________________________________________
+
+
+====================
+FILE STRUCTURE:
+====================
+
+Hashing.hh
+List.hh
+  - Fundamental datatypes
+
+Types.hh/cc
+Printing.hh
+  - Kernel types and (simple) pretty-printing thereof
+
+Kernel.hh/cc
+  - HOL-light kernel.
+
+Parser.hh/cc
+ParserTypes.hh/cc
+ProofStore.hh/cc
+RuleApply.hh/cc
+  - Proof-log parser, traverser, and functions for calling kernel on parsed lines.
+
+Checker.hh/cc
+  - Batch proof-checker (can produce statistics and other things).
+
+HolOperators.hh/cc
+HolFormat.hh/cc
+  - Advanced formatting (operators, term tracking etc).
+
+PremiseViewer.hh/cc
+DetailedViewer.hh/cc
+  - Browse the proof interactively [work in progress].
+
+Main_pan.cc
+  - Contains 'main()'.
+
+
+====================
+KERNEL:
+====================
+
+Mostly for efficiency reasons, but also to avoid code duplication, the kernel 
+protocol is NOT enforced by the C++ type system (it could be done with opaque 
+types, or 'friend' declarations). However, if you stick to the functions in
+'Kernel.hh' you are fine. You can also use functions/member-function in
+'Types.hh' provided that:
+
+  - You don't make type constants with 'Type(TCon c, List<Type> ts)' directly, 
+  instead you instantiate types through the kernel with 'kernel_Inst_Type()'.
+
+  - You don't make term constants with 'tmCnst(Cnst c, Type ty)' directly,
+  instead you instantiate constants through the kernel with 'kernel_Inst_Cnst()'.
+ 
+  - If you disect an abstraction terms 'tm' using 'tm.avar()' or 'tm.aterm()',
+  never use the resulting term to build new terms. It may contain internal
+  lambda-variables. The safe way to disect an abstraction term is through
+  'tm.betaRed(x)'.
+
+  - Don't put null-Terms or null-Types inside expressions.
+
+  - Don't use internal Cnst 'cnst_iand'. In general, things containing backticks
+  ("`") are internal.
+ 
+  - Never create a 'Thm' directly, that's the job of the kernel functions.
+
+  - Hol objects (Term/Type/Thm) are internally represented as 32 or 64-bit
+  (selected at compile time) called "IDs". If you use the low-level interface to
+  create an object from such an ID, make sure the ID was taken from an
+  object that was properly constructed.

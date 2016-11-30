@@ -1,0 +1,201 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Mem_SlimAlloc.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Handle small objects more efficiently. Large allocations are forwarded to malloc.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// 'SlimAlloc':
+
+
+// NOTE! Minimum allocation granularity is 8 bytes (to make sure 'double's are aligned)
+// This alignment must also be respected by the 'malloc_threshold'.
+//
+template<class T>
+class SlimAlloc {
+    StackAlloc<uint64> mem;
+    uint64**           free_lists;     // 'free_lists[i]' is for blocks of size '8 * (i+1)'
+    uint               malloc_threshold;
+
+    size_t round(size_t size) {
+        return (size + 7) >> 3; }
+
+    void allocFreeLists() {
+        free_lists = xmalloc<uint64*>(malloc_threshold >> 3);
+        for (uind i = 0; i < (malloc_threshold >> 3); i++)
+            free_lists[i] = NULL; }
+
+    void* allocQ  (size_t size);
+    void* alloc_  (size_t size);
+    void* realloc_(void* ptr, size_t old_size, size_t new_size);
+    void  free_   (void* ptr, size_t size);
+
+public:
+    typedef T Elem;
+
+    SlimAlloc(uint th = 128) {
+        malloc_threshold = th * sizeof(T);
+        assert((malloc_threshold & 7) == 0);
+        allocFreeLists();
+    }
+
+   ~SlimAlloc() { clear(false); }
+
+    T*      alloc  (size_t n_elems)                                 { return (T*)alloc_(n_elems * sizeof(T)); }
+    T*      realloc(T* ptr, size_t old_n_elems, size_t new_n_elems) { return (T*)realloc_((void*)ptr, old_n_elems * sizeof(T), new_n_elems * sizeof(T)); }
+    void    free   (T* ptr, size_t n_elems)                         { free_(ptr, n_elems * sizeof(T)); }
+
+    void    clear(bool reinit = true);    // -- clear all SMALL allocations (under 'malloc_threshold'). 
+    void    moveTo(SlimAlloc& dst, bool reinit = true);
+
+    uint  mallocThreshold() const { return malloc_threshold; }
+        // -- calls to 'alloc()' with sizes strictly greater than this will use 'malloc()'.
+
+    // Debug:
+    void report(bool include_underlying_stackalloc = false);
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Implementation:
+
+
+// PRE-CONDITION: 'size > 0' && 'size <= malloc_threshold'
+template<class T>
+inline void* SlimAlloc<T>::allocQ(size_t size)
+{
+    uint n = round(size); assert(n > 0); assert(n <= (malloc_threshold >> 3));
+    if (!free_lists[n-1])
+        return (void*)mem.alloc(n);
+    else{
+        uint64* result = free_lists[n-1];
+        free_lists[n-1] = reinterpret_cast<uint64*>(*free_lists[n-1]);
+        return result;
+    }
+}
+
+
+template<class T>
+inline void* SlimAlloc<T>::alloc_(size_t size)
+{
+    if (size == 0) return NULL;
+
+    if (size > malloc_threshold)
+        return (void*)xmalloc<char>(size);
+
+    return allocQ(size);
+}
+
+
+template<class T>
+inline void SlimAlloc<T>::free_(void* ptr, size_t size)
+{
+    if (size != 0){
+        assert(ptr);
+
+        if (size > malloc_threshold)
+            xfree(ptr);
+
+        else{
+            uind n = round(size);
+            *reinterpret_cast<uint64*>(ptr) = reinterpret_cast<uint64>(free_lists[n-1]);
+            free_lists[n-1] = reinterpret_cast<uint64*>(ptr);
+        }
+    }
+}
+
+
+template<class T>
+inline void* SlimAlloc<T>::realloc_(void* ptr, size_t old_size, size_t new_size)
+{
+    char* ret;
+    if (new_size > 0){
+        if (new_size > malloc_threshold){
+            if (old_size > malloc_threshold)
+                return (void*)xrealloc((char*)ptr, new_size);
+            else
+                ret = xmalloc<char>(new_size);
+        }else
+            ret = (char*)allocQ(new_size);
+
+        memcpy(ret, ptr, min_(old_size, new_size));
+    }else
+        ret = NULL;
+
+    if (old_size > 0)
+        free_(ptr, old_size);
+
+    return ret;
+}
+
+
+template<class T>
+inline void SlimAlloc<T>::clear(bool reinit)
+{
+    mem.clear();
+    xfree(free_lists);
+
+    if (reinit)
+        allocFreeLists();
+    else
+        free_lists = NULL;
+}
+
+
+template<class T>
+inline void SlimAlloc<T>::moveTo(SlimAlloc& dst, bool reinit)
+{
+    dst.clear(false);
+    mem.moveTo(dst.mem);
+    dst.free_lists = free_lists;
+    dst.malloc_threshold = malloc_threshold;
+
+    if (reinit)
+        allocFreeLists();
+    else
+        free_lists = NULL;
+}
+
+
+//=================================================================================================
+// Debug:
+
+
+template<class T>
+inline void SlimAlloc<T>::report(bool include_underlying_stackalloc)
+{
+    printf("SlimAlloc at %p:\n", this);
+    printf("  mem = %p  (underlying StackAlloc)\n", &mem);
+    printf("  malloc_threshold = %u\n", malloc_threshold);
+
+    size_t total_freed_bytes = 0;
+    for (uint i = 0; i < (malloc_threshold >> 3); i++){
+        uint sz = (i + 1) << 3;
+
+        uint64* p = free_lists[i];
+        size_t  len = 0;
+        while (p){
+            len++;
+            p = reinterpret_cast<uint64*>(*p);
+        }
+
+        if (len > 0){
+            printf("  free list for %u-byte block: %.0f elements = %.0f bytes\n", sz, double(len), double(len * sz));
+            total_freed_bytes += len * sz;
+        }
+    }
+    printf("  TOTAL FREED: %.3f MB\n", double(total_freed_bytes) / (1024*1024));
+
+    if (include_underlying_stackalloc){
+        printf("\n");
+        mem.report();
+    }
+}

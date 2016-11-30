@@ -17,6 +17,7 @@ including neural network models.
 ## Directories
 
 * `hol`: A C++ implementation of the HOL Light kernel.
+* `zz`: A reimplementation of the HOL Light kernel (with visualizer and other stuff).
 
 ## Installation
 

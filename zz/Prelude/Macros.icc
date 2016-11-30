@@ -1,0 +1,39 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Macros.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Miscellaneous macros.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| Define some various macros:
+//| 
+//|   elemsof( <c-array> )      -- Yields an expression stating the number of element in an array.
+//|   ZZ_Comma                  -- Use this if you need to pass a ',' in a macro argument.
+//|   static_assert( <cond> )   -- Compile time assertions.  
+//|   assert_debug ( <cond> )   -- Assertion active in debug mode only.
+//|   Ping                      -- Print a "got here" type of message on 'stderr' (debugging).
+//|   ZZ_Initializer( <tag> )   -- Create a global variable from a given tag and put code in the 
+//|   ZZ_Finalizer  ( <tag> )      constr./destr.: ZZ_Initializer(hello){ printf("Hello!\n"); } 
+//|   macro                     -- Abbreviation for "static inline" which is tedious to type.
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+bool zz_debug_tracing = false;
+
+
+ZZ_Initializer(zz_debug_tracing, -10100) {
+    zz_debug_tracing = (getenv("ZZ_TRACE") != NULL);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

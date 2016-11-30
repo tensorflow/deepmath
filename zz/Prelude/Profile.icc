@@ -1,0 +1,96 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Profile.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Helper functions for profiling inner loops etc.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+bool suppress_profile_output;
+
+double real_T0;
+double real_T1;
+uint64 rdtsc_T0;
+uint64 rdtsc_T1;
+
+PTimer* ptimer_list;
+
+
+ZZ_Initializer(Profile, -10005)
+{
+    suppress_profile_output = true;
+    rdtsc_T0 = rdtsc();
+    real_T0  = realTime();
+    ptimer_list = NULL;
+}
+
+
+ZZ_Finalizer(Profile, +10005){
+    dumpProfileData();
+}
+
+
+void dumpProfileData()
+{
+    rdtsc_T1 = rdtsc();
+    real_T1  = realTime();
+
+    if (ptimer_list != NULL && (!suppress_profile_output || getenv("ZZ_PROFILE"))){
+        bool all_zero = true;
+        for (PTimer* t = ptimer_list; t != NULL; t = t->next)
+            if (t->acc_time != 0)
+                all_zero = false;
+
+        if (!all_zero){
+            // Reverse list
+            PTimer* prev = NULL;
+            PTimer* next = NULL;
+            for (PTimer* t = ptimer_list; t != NULL; t = next){
+                next = t->next;
+                t->next = prev;
+                prev = t;
+            }
+            ptimer_list = prev;
+
+            NewLine;
+            Write "\a/";
+            WriteLn "_______________________________________________________________________________";
+            WriteLn "                                                           Profile Timer Report";
+            WriteLn "Estimated CPU speed: \a*%.2f GHz\a*", (rdtsc_T1 - rdtsc_T0) / (real_T1 - real_T0) / 1000000000;
+            WriteLn "Total run-time     : \a*%.2f s\a*", (real_T1 - real_T0);
+            WriteLn "Memory usage       : \a*%DB\a*", memUsed();
+            WriteLn "\a/";
+
+            // Output counters:
+            uint max_len = 0;
+            for (PTimer* t = ptimer_list; t != NULL; t = t->next)
+                newMax(max_len, (uint)strlen(t->timer_name));
+
+            double to_sec     = (real_T1 - real_T0) / (rdtsc_T1 - rdtsc_T0);
+            double to_percent = 100.0 / (rdtsc_T1 - rdtsc_T0);
+            for (PTimer* t = ptimer_list; t != NULL; t = t->next){
+                if (t->acc_time == 0) continue;
+                Write "%_: ", t->timer_name;
+                for (uint i = (uint)strlen(t->timer_name); i < max_len; i++) Write " ";
+                WriteLn "\a*%>9%.2f s\a*  (%.2f %%)", t->acc_time * to_sec, t->acc_time * to_percent;
+            }
+
+            WriteLn "\a/_______________________________________________________________________________\a/";
+        }
+    }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

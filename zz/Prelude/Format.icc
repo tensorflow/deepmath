@@ -1,0 +1,612 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Format.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Formating functions for the 'Out' class.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| (see Format.ihh)
+//|________________________________________________________________________________________________
+
+
+/*
+%%   = Literal '%'
+%_   = Call 'write_' for the type (or 'format_' if there are format specifiers)
+
+%c   = character
+%C   = maybe character (0 means no output)
+%d   = cast to uint64 and print
+%,d  = use separators '32,123'
+%.3d = print at least three digits (put zeros in the front if necessary)
+%+d  = always write sign
+%D   = big numbers, use suffix 'k', 'M' etc. Maximum width is 6 characters for positive numbers.
+%^D  = big numbers, base 1024 instead of 1000
+%'D  = don't leave space between number and suffix. Maximum width is 5 characters instead of 6.
+%,D  = print small kilos exact (12,342 instead of 12.3k); they fit anyway
+%x   = hexadecimal, lower-case letters
+%X   = hexadecimal, upper-case letters
+%:X  = with separators: 1234:ABBA (zero are prepended to fill up the most significant group)
+%.8X = print at least 8 digits (including zeros in the front)
+%b   = binary numbers
+%:b  = with separators
+%f   = cast to double
+%,f  = use separators '32,123.123,324,12'
+%.2f = use exactly two decimals
+
+%+f  = always write sign
+%t   = time (in seconds). Cast to double, format as "hh:mm" or "mm:ss" or "ss.dd" (or "ddd.dd" if > 24h). Suffix is added. Also support nano-seconds etc.
+%'t  = time without space between number and suffix.
+%p   = pointer
+%P   = pointer with capital hex
+%w   = white-space (argument of integer type)
+%?w  = white-space, where '?' is a non-alpha character that is used for fill
+% ?w = alt. syntax; works for '=' too and remaps '-' to '_'
+
+%n   = for Array<T>; print "" instead of "<nil>"
+
+Here 'fmt' is format strings as above (without the '%'):
+
+%<10%fmt     = Left adjust, 10 characters wide
+%<10!%fmt    = Left adjust, exactly 10 characters wide (truncate end if doesn't fit)
+%<10 _%fmt   = Left adjust, use '_' for space (place any character here except '%')
+%<10 %fmt    = Left adjust, use '%' for space
+%>10%fmt     = Right adjust, 10 characters wide
+%=10%fmt     = Center
+%>10!~ _%fmt = Truncate with '~', pad with '_'.
+*/
+
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Helper functions:
+
+
+static
+void wDecimal(Out& out, uint64 x, uint min_size, char sep = 0)
+{
+    assert(min_size <= 20);     // -- no point padding more zeros than a 64-bit number can represent
+
+    char buf[26];   // -- longest string: "18,446,744,073,709,551,615"
+    uint sz = 0;
+    for(;;){
+        buf[sz++] = '0' + uchar(x % 10);
+        x /= 10;
+        if (x == 0 && sz >= min_size) break;
+        if (sep != 0 && sz % 4 == 3)
+            min_size++,
+            buf[sz++] = sep;
+    }
+
+    for (uint i = sz; i > 0;) i--,
+        out.push(buf[i]);
+}
+
+
+static cchar* lo_hex_digits = "0123456789abcdef";
+static cchar* hi_hex_digits = "0123456789ABCDEF";
+
+static
+void wHexadecimal(Out& out, uint64 x, uint min_size, bool ucase, char sep = 0)
+{
+    assert(min_size <= 16);     // -- no point padding more zeros than a 64-bit number can represent
+
+    char buf[19];   // -- longest string: "FFFF:FFFF:FFFF:FFFF"
+    uint sz = 0, n = 0;
+    cchar* digs = ucase ? hi_hex_digits : lo_hex_digits;
+    for(;;){
+        buf[sz++] = digs[x & 15];
+        n++;
+        x >>= 4;
+        if (x == 0 && n >= min_size) break;
+        if (sep != 0 && n % 4 == 0)
+            buf[sz++] = sep;
+    }
+
+    for (uint i = sz; i > 0;) i--,
+        out.push(buf[i]);
+}
+
+
+static
+void wBinary(Out& out, uint64 x, uint min_size, char sep = 0)
+{
+    assert(min_size <= 64);     // -- no point padding more zeros than a 64-bit number can represent
+
+    char buf[79];   // -- longest string: "1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111:1111"
+    uint sz = 0, n = 0;
+    for(;;){
+        buf[sz++] = '0' + char(x & 1);
+        n++;
+        x >>= 1;
+        if (x == 0 && n >= min_size) break;
+        if (sep != 0 && n % 4 == 0)
+            buf[sz++] = sep;
+    }
+
+    for (uint i = sz; i > 0;) i--,
+        out.push(buf[i]);
+}
+
+
+void wBigDecimal(Out& out, uint64 x, bool base1024, bool suf_space, bool small_kilos)
+{
+    static cchar suffixes[] = {'k','M','G','T','P','E','Z','Y'};
+
+    if (x < 1000){
+        if      (x >= 100) out += char(x / 100 + '0'), char((x / 10) % 10 + '0'), char(x % 10 + '0');
+        else if (x >= 10)  out += char(x / 10 + '0'), char(x % 10 + '0');
+        else               out += char(x + '0');
+
+    }else if (!small_kilos && (x < 10000 || (x < 100000 && suf_space))){
+        if (x >= 10000) out += char(x / 10000 + '0'), char((x / 1000) % 10 + '0');
+        else            out += char(x / 1000 + '0');
+        x %= 1000;
+        out += ',', char(x / 100 + '0'), char((x / 10) % 10 + '0'), char(x % 10 + '0');
+
+    }else{
+        uint p;
+        if (!base1024){
+            // Scale:
+            p = 0;
+            while (x >= 999500){ p++; x /= 1000; }
+            assert(p < sizeof(suffixes));
+
+            uint frac = uint(x % 1000);
+            x /= 1000;
+
+            // Round:
+            if      (x >= 100) frac += 500;
+            else if (x >=  10) frac += 50;
+            else               frac += 5;
+            if (frac >= 1000) { x++; frac -= 1000; }
+            assert(x < 1000);
+
+            // Print:
+            if      (x >= 100){ out += char(x / 100 + '0'), char((x / 10) % 10 + '0'), char(x % 10 + '0'); }
+            else if (x >= 10) { out += char(x / 10 + '0'), char(x % 10 + '0'), '.', char(frac / 100 + '0'); }
+            else              { out += char(x + '0'), '.', char(frac / 100 + '0'), char((frac / 10) % 10 + '0'); }
+
+        }else{
+            // Scale:
+            uint64 ix, fx, ftop;
+            uint   shift;
+            for (p = 0;; p++){
+                shift = 10 * (p+1);
+                ix = x >> shift;
+                fx = x & ((uint64(1) << shift) - 1);
+                ftop = uint64(1) << (shift - 1);
+
+                if (ix < 999 || (ix == 999 && (fx & ftop) == 0)) break;
+                    // -- here we prefer '0.98 M' to '1000 k' in this mode where '1M = 1048576' etc.
+            }
+
+            // Round:
+            if      (ix >= 100){ fx += ftop; }
+            else if (ix >=  10){ fx += ftop / 10; }
+            else               { fx += ftop / 100; }
+            if (fx >= 2*ftop){ ix++; fx -= 2*ftop; }
+            assert(ix < 1000);
+
+            // Print:
+            if (ix >= 100){
+                out += char(ix / 100 + '0'), char((ix / 10) % 10 + '0'), char(ix % 10 + '0');
+            }else if (ix >= 10) {
+                uint frac = uint((fx * 10) >> shift);
+                out += char(ix / 10 + '0'), char(ix % 10 + '0'), '.', char(frac + '0');
+            }else{
+                uint frac = uint((fx * 100) >> shift);
+                out += char(ix + '0'), '.', char(frac / 10 + '0'), char(frac % 10 + '0');
+            }
+        }
+
+        if (suf_space) out += ' ';      // <<== print this space also if no suffix is used? "123B" vs "123 MB". Alt, take '#' to leave out space?
+        out += suffixes[p];
+    }
+}
+
+
+// Rounds downwards (so 23:59:59 comes out as "23:59 h" rather than "1.00 days", even though
+// the latter is more precise).
+static
+void wTime(Out& out, double t, Str flags)
+{
+    // Flags can only be "t" or "'t":
+    bool suf_space = true;
+    if (flags.size() == 2){
+        assert(flags[0] == '\'');
+        suf_space = false;
+    }else
+        assert(flags.size() == 1);
+
+
+    // Output time with 3 value digits (execpt for very large times):
+    if (t < 0){
+        out += '-';
+        t = -t; }
+
+    cchar* suffix;
+
+    if (t >= 24 * 60 * 60){
+        suffix = "days";
+        double days = t / (24 * 60 * 60);
+        cchar* fmt = (days >= 100) ? "%.0f" : (days >= 10) ? "%.1f" : "%.2f";
+        out %= fmt, days;
+
+    }else if (t >= 60 * 60){
+        suffix = "h";
+        uint min = uint(t) / 60;
+        out %= "%d:%.2d", min / 60, min % 60;
+
+    }else if (t >= 60){
+        suffix = "mn";
+        uint sec = uint(t);
+        out %= "%d:%.2d", sec / 60, sec % 60;
+
+    }else if (t >= 10){
+        suffix = "s";
+        out %= "%d.%.1d", uint(t), uint(t * 10) % 10;
+
+    }else if (t >= 1){
+        suffix = "s";
+        out %= "%d.%.2d", uint(t), uint(t * 100) % 100;
+
+    }else if (t == 0){
+        out += '0';
+        suffix = "s";
+
+    }else{
+        cchar* suf[] = { "ms", "us", "ns", "ps" ,"fs", "as", "zs", "ys" };
+        for (uint i = 0;; i++){
+            suffix = suf[i];
+            t *= 1000;
+            if (t >= 1) break;
+            if (i == 7){
+                // Treat really small times as zero:
+                out += '0';
+                suffix = "s";
+                goto Done;
+            }
+        }
+
+        cchar* fmt = (t >= 100) ? "%.0f" : (t >= 10) ? "%.1f" : "%.2f";
+        out %= fmt, t;
+    }
+  Done:;
+
+    if (suf_space)
+        out += ' ', suffix;
+    else
+        out += suffix;
+}
+
+
+
+/*
+    123 days
+    12.3 days
+    1.23 days
+    23:12 h
+    43:05 min
+    1.14 s
+    12.5 s
+    123 ms
+    12.3 ms
+    1.23 ms
+    123 us
+    ...
+*/
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Dispatch functions:
+
+
+#define Parse_Num(target) do{ \
+    uint n_ = 0; \
+    while (isDigit(flags[i+1])) n_ = n_*10 + flags[i+1] - '0', i++; \
+    target = n_; } while(0)
+    // -- this macro assumes parsing 'flags' using index 'i' (and 'target' must be declared before)
+
+
+void write_uint(Out& out, uint64 num, Str flags, bool neg)
+{
+    if (neg)
+        out += '-';
+
+    switch (flags.last()){
+    case 'd':{
+        // , use separators
+        // + always use sign
+        // .<num> for small numbers, append zeros in the front to print 'num' digits in total
+        bool use_seps = false;
+        bool use_plus = false;
+        uint min_size = 0;
+        for (uint i = 0; i < flags.size()-1; i++){
+            if      (flags[i] == ',') use_seps = true;
+            else if (flags[i] == '+') use_plus = true;
+            else if (flags[i] == '.') Parse_Num(min_size);
+            else                      assert(false);    // -- invalid flags for 'd'
+        }
+        assert(min_size <= 20);     // -- otherwise too wide
+        if (use_plus && !neg)
+            out += '+';
+
+        if (use_seps) wDecimal(out, num, min_size, ',');
+        else          wDecimal(out, num, min_size);
+        break;}
+
+    case 'D':{
+        // ^ for base 1024
+        // ' for no space to suffix
+        // , use comma instead of suffix for numbers < 100,000
+        // + always use sign
+        bool base1024 = false;
+        bool suf_space = true;
+        bool small_kilos = true;
+        bool use_plus = false;
+        for (uint i = 0; i < flags.size()-1; i++){
+            if      (flags[i] == '^')  base1024 = true;
+            else if (flags[i] == '\'') suf_space = false;
+            else if (flags[i] == ',')  small_kilos = false;
+            else if (flags[i] == '+')  use_plus = true;
+            else                       assert(false);  // -- invalid flags for 'D'
+        }
+        if (use_plus && !neg)
+            out += '+';
+        wBigDecimal(out, num, base1024, suf_space, small_kilos);
+        break;}
+
+    case 'x':
+    case 'X':{
+        // : use separators
+        // .<num> for small numbers, append zeros in the front to print 'num' digits in total
+        bool ucase = flags.last() == 'X';
+        bool use_seps = false;
+        uint min_size = 0;
+        for (uint i = 0; i < flags.size()-1; i++){
+            if      (flags[i] == ':') use_seps = true;
+            else if (flags[i] == '.') Parse_Num(min_size);
+            else                      assert(false);    // -- invalid flags for 'x'
+        }
+        assert(min_size <= 16);     // -- otherwise too wide
+
+        if (use_seps) wHexadecimal(out, num, min_size, ucase, ':');
+        else          wHexadecimal(out, num, min_size, ucase);
+        break;}
+
+    case 'b':{
+        // : use separators
+        // .<num> for small numbers, append zeros in the front to print 'num' digits in total
+        bool use_seps = false;
+        uint min_size = 0;
+        for (uint i = 0; i < flags.size()-1; i++){
+            if      (flags[i] == ':') use_seps = true;
+            else if (flags[i] == '.') Parse_Num(min_size);
+            else                      assert(false);    // -- invalid flags for 'd'
+        }
+        assert(min_size <= 64);     // -- otherwise too wide
+
+        if (use_seps) wBinary(out, num, min_size, ':');
+        else          wBinary(out, num, min_size);
+        break;}
+
+    case 'f':
+        write_double(out, double(num), true, flags);
+        break;
+
+    case 't':
+        wTime(out, double(num), flags);
+        break;
+
+    case 'c':
+        out += (uchar)num;
+        break;
+
+    case 'C':
+        if (num != 0)
+            out += (uchar)num;
+        break;
+
+    case 'w':{
+        char fill = ' ';
+        if (flags.size() == 2)
+            fill = flags[0];
+        else if (flags.size() == 3){
+            fill = flags[1]; assert(flags[0] == ' ');
+            if (fill == '-') fill = '_';
+        }else
+            assert(flags.size() == 1);
+
+        for (uind i = 0; i < num; i++)
+            out += fill;
+        break;}
+
+    default:
+        // Output something useful on stderr before aborting:
+        char* msg = xmalloc<char>(flags.size() + 1);
+        memcpy(msg, flags.base(), flags.size());
+        msg[flags.size()] = 0;
+        fprintf(stderr, "\nInvalid flag letter: %s\n", msg); fflush(stderr);
+        assert(false);  // -- invalid flag letter
+    }
+}
+
+
+void write_double(Out& out, double num, bool dbl_prec, Str flags)
+{
+    uint decimals = UINT_MAX;
+    bool use_seps = false;
+    bool use_plus = false;
+    if (!flags.null()){
+        if (flags.last() == 't'){
+            wTime(out, num, flags);   // -- dispatch to writing time
+            return; }
+
+        assert(flags.last() == 'f');
+        for (uint i = 0; i < flags.size()-1; i++){
+            if      (flags[i] == ',') use_seps = true;
+            else if (flags[i] == '+') use_plus = true;
+            else if (flags[i] == '.') Parse_Num(decimals);
+            else                      assert(false);    // -- invalid flags for 'd'
+        }
+    }
+
+    if (num < 0){
+        out += '-';
+        num = -num;
+    }else if (num >= 0 && use_plus)
+        out += '+';
+
+    if (decimals == UINT_MAX){
+        int expo;
+        frexp(num, &expo);
+        double epsilon = pow(2.0, (dbl_prec ? -48 : -20) + expo);
+
+        double n = num;
+        decimals = 0;
+        for(;;){
+            n -= floor(n);
+            if (n <= epsilon || (1 - n) <= epsilon) break;
+            n *= 10;
+            epsilon *= 10;
+            decimals++;
+            if (decimals == 308) break;
+        }
+    }
+
+    cchar* text = nsprintf("%.*f", decimals, num);
+
+    if (use_seps){
+        uint dot = 0;
+        while (text[dot] != '.' && text[dot] != 0) dot++;
+        assert(dot != 0);
+
+        cchar* p = text;
+        for(;;){
+            out += *p;
+            p++;
+            dot--;
+            if (dot == 0) break;
+            if (dot % 3 == 0) out += ',';
+        }
+
+        if (*p == '.'){
+            out += *p;
+            p++;
+            for(;;){
+                out += *p;
+                p++;
+                dot++;
+                if (*p == 0) break;
+                if (dot % 3 == 0) out += ',';
+            }
+        }
+    }else
+        out += text;
+
+    xfree(text);
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Alignment:
+
+
+String formater_tmp_out;    // <<== Must be made thread local in a multi-threaded progam.
+
+
+// First character is either '<', '=', or '>' for left, center or right alignment.
+// This is followed by a decimal number for width, optionally followed by a '!'
+// to enforce exactly this width. If the character after '!' is not a '%' or a space,
+// that character will be used as last character for overflow strings. Finally, if
+// there is a space followed by a character at the end of the string, that character
+// is used for padding. The string is terminated by a '%'. Example:
+//
+//   %>10!~ _%
+//
+// Right adjust with 10 characters, putting a '~' last if we had to truncate. Padding
+// is done by underscores '_'.
+//
+void writeAligned(Out& out, const String& text, Str align)
+{
+    // Parse 'align' string:
+    char dir = align[0];
+
+    uint width = 0;
+    uint i = 1; assert(isDigit(align[i]));
+    width = align[i++] - '0';
+    while (isDigit(align[i])) width = width*10 + align[i++] - '0';
+
+    bool exact;
+    if (align[i] == '!') exact = true, i++;
+    else                 exact = false;
+
+    char fill;
+    char trunc_char = 0;
+    if (align[i] == '%')
+        fill = ' ';
+    else{
+        if (align[i] != ' ')
+            trunc_char = align[i], i++;
+        assert(align[i] == ' ');
+        i++;
+        fill = align[i];
+        assert(fill == '%' || align[i+1] == '%');
+    }
+
+    // Print 'text':
+    if (exact && text.size() > width){
+        if (trunc_char == 0){
+            for (uint n = 0; n < width; n++)
+                out += text[n];
+        }else{
+            for (uint n = 0; n < width-1; n++)
+                out += text[n];
+            out += trunc_char;
+        }
+
+    }else if (dir == '<'){
+        out += text;
+        for (ind n = (ind)width - text.size(); n > 0; n--) out += fill;
+
+    }else if (dir == '>'){
+        for (ind n = (ind)width - text.size(); n > 0; n--) out += fill;
+        out += text;
+
+    }else{ assert (dir == '=');     // -- direction has to be one of: < = >
+        for (ind n = ((ind)width - text.size()) / 2; n > 0; n--) out += fill;
+        out += text;
+        for (ind n = ((ind)width - text.size() + 1) / 2; n > 0; n--) out += fill;
+    }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Debugging:
+
+
+#if defined(__GNUC__) || defined(sun)
+String formatDumpArgs(cchar* text)
+{
+    String   result;
+    Vec<Str> ns;
+
+    splitArray(slize(text), ",", ns);
+    for (uind i = 0; i < ns.size(); i++){
+        if (i > 0) result += ' ', ' ';
+        trimStr(ns[i]);
+        result += ns[i], "=%_";
+    }
+    return result;
+}
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

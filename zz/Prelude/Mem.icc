@@ -1,0 +1,92 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Mem.icc
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Implementation part of the 'Mem_XXX' header files.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+#if !defined(ZZ_NO_SMART_YMALLOC)
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// With smart "ymalloc":
+
+
+#define MALLOC_THRESHOLD 128
+
+SlimAlloc<char>* ymalloc_mempool = NULL;
+
+ZZ_Initializer(mempool, -10100){
+    ymalloc_mempool = new SlimAlloc<char>(MALLOC_THRESHOLD);
+}
+
+ZZ_Finalizer(mempool, -10100){
+    delete ymalloc_mempool;
+    ymalloc_mempool = NULL;
+}
+
+
+// <<== rely more directly on SlimAllloc
+char* yrealloc_helper(char* ptr, size_t old_size, size_t new_size)
+{
+    if (ymalloc_mempool == NULL){   // <<== move to separate function for better inlining
+        fprintf(stderr, "INTERNAL ERROR! 'yrealloc_helper()' reached with uninitializer memory pool.\nDid you forget to issue 'ZZ_Init;' in 'main()'?\n");
+      #if defined (ZZ_NO_EXCEPTIONS)
+        _exit(-1);
+      #else
+        throw Excp_MemInitFail();
+      #endif
+    }
+
+    char* ret;
+    if (new_size > 0){
+        if (old_size > MALLOC_THRESHOLD && new_size > MALLOC_THRESHOLD)
+            return xrealloc(ptr, new_size);
+
+        ret = (char*)ymalloc_mempool->alloc(new_size);
+        memcpy(ret, ptr, min_(old_size, new_size));
+    }else
+        ret = NULL;
+
+    if (old_size > 0)
+        ymalloc_mempool->free(ptr, old_size);
+
+    return ret;
+}
+
+
+void yfree_helper(char* ptr, size_t size)
+{
+    if (ymalloc_mempool == NULL){   // -- ignore calls after ZZ_Finalizer has been called
+        if (size > MALLOC_THRESHOLD)
+            xfree(ptr);
+    }else if (size > 0)
+        ymalloc_mempool->free(ptr, size);
+}
+
+
+#else
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Without smart "ymalloc":
+
+
+ZZ_Initializer(mempool, -10100){
+    /*nothing*/
+}
+
+ZZ_Finalizer(mempool, -10100){
+    /*nothing*/
+}
+
+
+#endif
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

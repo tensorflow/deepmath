@@ -1,0 +1,81 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Console.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Adds some niceties to the console output in a platform independent way.
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//|
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+ZZ_Decl_Global_Lock(console);       // -- may be used by user of this module to ensure monotonicity
+
+
+void useAnsiStdOut(bool value);
+void useAnsiStdErr(bool value);
+void useAnsi(bool value);
+
+void consoleFlush(bool stdout_);
+void consoleReconnected(bool stdout_);
+    // -- If you reconnect 'stdout' or 'stderr' using eg. 'dup' or 'freopen', you should first
+    // flush the stream with 'consoleFlush()', then reconnect, then call 'consoleReconnected()'.
+    // Use argument TRUE for 'stdout' and FALSE for 'stderr'.
+
+
+struct ConsoleWriter {
+    virtual void putChar(char c) = 0;
+    virtual void flush() = 0;
+    virtual ~ConsoleWriter() {}
+};
+
+void redirectConsole(bool stdout_, ConsoleWriter& wr, bool use_ansi, bool is_console);
+    // -- If 'is_console' is true, output will be flushed more frequently and may contain '\b' 
+    // for erasing old output. Use 'consoleReconnected()' to restore output to the normal
+    // console.
+
+
+// Using ANSI will add the following control codes:
+//
+//   \a* -- attribute bold on/off
+//   \a/ -- attribute emphasize (~= italics) on/off
+//   \a_ -- attribute underscore on/off
+//   \a^ -- attribute reverse (~= xor) on/off
+//   \a0 -- clear all attributes
+//
+//   \t+ -- indent level increase by one space
+//   \t- -- indent level decrease by one space
+//   \t0 -- clear indent level
+//   \t_ -- Horizontal separator (will be replace by space if more characters follow on this line)       <<== not implemented yet
+//   \t, -- Horizontal separator (will be replace by comma if more characters follow on this line)       <<== not implemented yet
+//   \t; -- Horizontal separator (will be replace by comma if more characters follow on this line)       <<== not implemented yet
+//
+//   \v_ -- Vertical separator (will be replaced by newline if more lines follow)       <<== not implemented yet
+//
+//   \n  -- new line (will also clear all marks set by '\b+') and FLUSH OUTPUT
+//   \f  -- clear the rest of line (particularly useful after '\r') and FLUSH OUTPUT
+//   \r  -- start over on this line (use '\f' at end to flush and clear trailing characters)
+//
+//   \b+ -- (back-to) Set carrige-return ('\r') point to current column (push a mark)
+//   \b- -- (back-to) Pop latest carrige-return mark
+//   \b0 -- (back-to) Clear all carrige-return marks
+
+
+void writeChars(cchar* data, uind size, bool use_stdout);
+    // if 'use_stdout' is FALSE, 'stderr' is used instead.
+
+uint getConsoleWidth();
+    // -- returns 80 if cannot determine. Can be overriden with env. variable 'ZZ_TERM_WIDTH'.
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

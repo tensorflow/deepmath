@@ -1,0 +1,172 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Profile.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Helper functions for profiling inner loops etc.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//| Profile data is displayed at the end of execution if environment variable ZZ_PROFILE is
+//| defined.
+//| 
+//| Timers are created by putting in the global scope:
+//| 
+//|     ZZ_PTimer_Add(<timer name>);
+//|                                                                                      
+//| There are several ways to increment a timer:
+//| 
+//|  - Method 1 -- use internal state to store start time:
+//| 
+//|     ZZ_PTimer_Begin(<timer name>);
+//|     <code>
+//|     ZZ_PTimer_End(<timer name>);
+//|     
+//|     Here there is no restriction on scope between "Begin" and "End", but the method cannot 
+//|     be used recursively.
+//|     
+//|     
+//|  - Method 2 -- use a local stack variable:
+//|     
+//|     ZZ_PTimer_Mark(<mark name>);
+//|     <code>
+//|     if (<condition>)
+//|         ZZ_PTimer_AddTo(<one timer name>, <mark name>);
+//|     else
+//|         ZZ_PTimer_AddTo(<other timer name>, <mark name>);
+//|     
+//|     This version requires "AddTo" to be in scope of "Mark", but it can be used to conditionally
+//|     increment one timer or another.
+//|     
+//|     
+//|  - Method 3 -- Use implicit class constructor/destructor to get whole scope:
+//|   
+//|     ZZ_PTimer_Scope(<timer name>);
+//| 
+//| 
+//| Neither method 2 or 3 will touch the reserved variable of method 1.
+//|________________________________________________________________________________________________
+
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Parameters:
+
+
+extern bool suppress_profile_output;        // -- defaults to TRUE
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Inline assembler for getting cycle counter:
+
+
+#if defined(__linux__)
+    #if !defined(ZZ_LP64)
+        extern __inline__ uint64 rdtsc(void) {
+            uint64 x;
+            __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
+            return x;
+        }
+
+    #else
+        extern __inline__ uint64 rdtsc() {
+            uint32 lo, hi;
+            __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+            return (uint64)hi << 32 | lo;
+        }
+    #endif
+#else
+    macro uint64 rdtsc() { return 0; }
+#endif
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Convenience macros for accumulating time:
+
+
+struct PTimer {
+    cchar*  timer_name;   // Timer name.
+    uint64  acc_time;     // Accumulated time.
+    uint64  last_time;    // Last time stamp (non-recursive)
+    PTimer* next;         // Link to next counter.
+};
+
+extern PTimer* ptimer_list;
+
+struct PTimerScope {
+    PTimer& t;
+    uint64  last_time;
+    PTimerScope(PTimer& t_) : t(t_) { last_time = rdtsc(); }
+   ~PTimerScope()                   { t.acc_time += rdtsc() - last_time; }
+};
+
+#define ZZ_PTimer_Add(name)                         \
+    PTimer zz_ptimer_##name;                        \
+    ZZ_Initializer(PTimer_##name, -10004){          \
+        zz_ptimer_##name.timer_name = #name;        \
+        zz_ptimer_##name.acc_time   = 0;            \
+        zz_ptimer_##name.last_time  = UINT64_MAX;   \
+        zz_ptimer_##name.next       = ptimer_list;  \
+        ptimer_list = &zz_ptimer_##name;            \
+    }
+#define ZZ_PTimer_Declare(name) \
+    extern PTimer zz_ptimer_##name;
+
+#define ZZ_PTimer_Begin(name) do{ zz_ptimer_##name.last_time = rdtsc(); }while(0)
+#define ZZ_PTimer_End(name)   do{ zz_ptimer_##name.acc_time += rdtsc() - zz_ptimer_##name.last_time; }while(0)
+
+#define ZZ_PTimer_Mark(mark) uint64 zz_ptimer_mark_##mark = rdtsc();
+#define ZZ_PTimer_AddTo(name, mark) do{ zz_ptimer_##name.acc_time += rdtsc() - zz_ptimer_mark_##mark; }while(0)
+
+#define ZZ_PTimer_Scope(name) PTimerScope zz_ptimer_scope_##name(zz_ptimer_##name);
+
+
+void dumpProfileData();
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Non-accumulative, quick-and-dirty timing macro:
+
+
+#define TimeIt ScopedTimeit time_it_dummy__  ___unused (__LINE__, __FILE__, __FUNCTION__);
+    // -- just put 'TimeIt' at the top of a scope and it will output timing results
+    // at the end of that scope (to stdout).
+
+
+struct ScopedTimeit {
+    uint   line;
+    cchar* file;
+    cchar* func;
+
+    double real_T0;
+    double cpu_T0;
+    uint64 rdtsc_T0;
+
+    ScopedTimeit(uint line_, cchar* file_, cchar* func_) :
+        line(line_),
+        file(file_),
+        func(func_)
+    {
+        real_T0  = realTime();
+        cpu_T0   = cpuTime();
+        rdtsc_T0 = rdtsc();
+    }
+
+   ~ScopedTimeit(){
+        uint64 rdtsc_T1 = rdtsc();
+        double cpu_T1   = cpuTime();
+        double real_T1  = realTime();
+
+        WriteLn "\a/%_:%_, %_():\a/  real=%t,  cpu=%t,  cycles=%,d", file, line, func, real_T1-real_T0, cpu_T1-cpu_T0, rdtsc_T1-rdtsc_T0;
+    }
+
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

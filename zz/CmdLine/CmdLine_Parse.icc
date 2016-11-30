@@ -1,0 +1,442 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : CmdLine_Parse.icc
+//| Author(s)   : Niklas Een
+//| Module      : CmdLine
+//| Description : Command line "value" and "signature" parser.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| Exports:
+//| 
+//|    CLI_Val CLI_parseValue(cchar* text)
+//|    CLI_Sig CLI_parseSignature(cchar* text)
+//|________________________________________________________________________________________________
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Helper functions:
+
+
+static bool cliIsSigDelim(char c) {    // -- end-of-string counts as delimiter as well
+    return isWS(c) || c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == '|' || c == ',' || c == ':' || c == 0; }
+
+static bool cliIsValDelim(char c) {
+    return isWS(c) || c == '(' || c == ')' || c == '[' || c == ']' || c == ',' || c == 0; }
+
+macro void cliSkipWS(cchar*& p) {
+    while (isWS(*p)) p++; }
+
+
+// Token class:
+class CLI_Tokens {
+    Vec<char> data;
+    Vec<uind> offsets;      // bit 0 indicates whether token is a delimiter (TRUE) or not (FALSE). 
+
+public:
+    struct Excp_RangeError {};
+
+    void   tokenize(cchar* text, bool signature);
+
+    uind   size()        const { return offsets.size(); }
+    cchar* text (uind i) const { if (i >= size()) throw Excp_RangeError(); return &data[offsets[i] >> 1]; }   // -- returns ith token as a zero terminated string
+    bool   delim(uind i) const { if (i >= size()) throw Excp_RangeError(); return offsets[i] & 1; }           // -- returns TRUE if ith token is a delimiter
+};
+
+
+void CLI_Tokens::tokenize(cchar* text, bool signature)
+{
+    bool (*cliIsDelim)(char c) = signature ? cliIsSigDelim : cliIsValDelim;
+    cchar* p = text;
+
+    for(;;){
+        cliSkipWS(p);
+        if (*p == 0)
+            return;
+
+        else if (cliIsDelim(*p)){
+            offsets.push((data.size() << 1) | 1);
+            data.push(*p);
+            data.push(0);
+            p++;
+
+        }else{
+            offsets.push(data.size() << 1);
+            while (!cliIsDelim(*p)){
+                if (*p == '\\'){
+                    p++;
+                    if (*p == 0)
+                        return;
+                }
+
+                data.push(*p);
+                p++;
+            }
+            data.push(0);
+        }
+    }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Signatures:
+
+
+static CLI_Sig parseSignature_helper(CLI_Tokens& T, uind& i);
+
+
+static
+CLI_Sig parseSignature(CLI_Tokens& T, uind& i)
+{
+    CLI_Sig s = parseSignature_helper(T, i);
+    if (s.type == cli_ERROR){ return s; }    // -- pass error on upwards
+
+    if (i < T.size() && T.delim(i) && eq(T.text(i), "|")){
+        ++i;
+        CLI_Sig ss;
+        ss.type = cli_Or;
+        ss.sub = new Vec<CLI_Sig>;
+        ss.sub->push(s);
+
+        for(;;){
+            s = parseSignature_helper(T, i);
+            if (s.type == cli_ERROR){ dispose(ss); return s; }    // -- pass error on upwards
+
+            ss.sub->push(s);
+
+            if (i >= T.size() || !T.delim(i) || !eq(T.text(i), "|"))
+                break;
+            ++i;
+        }
+        return ss;
+
+    }else
+        return s;
+}
+
+
+static
+CLI_Sig parseSignature_helper(CLI_Tokens& T, uind& i)
+{
+    if (i >= T.size())
+        return CLI_Sig_error("Unexpected end of signature string.");
+
+    CLI_Sig s;
+    if (!T.delim(i)){
+        if (eq(T.text(i), "bool")){
+            // BOOL:
+            ++i;
+            s.type = cli_Bool;
+
+        }else if (eq(T.text(i), "int")){
+            // INTEGER:
+            ++i;
+            s.type = cli_Int;
+            if (i < T.size() && T.delim(i) && eq(T.text(i), "[")){
+                ++i;
+                try{
+                    if (eq(T.text(i), ":")){
+                        s.int_range.lo = INT64_MIN;
+                        ++i;
+                    }else{
+                        s.int_range.lo = stringToInt64(T.text(i));
+                        ++i;
+                        if (eq(T.text(i), ":")) ++i;
+                        else throw "";
+                    }
+
+                    if (eq(T.text(i), "]")){
+                        s.int_range.hi = INT64_MAX;
+                    }else{
+                        s.int_range.hi = stringToInt64(T.text(i));
+                        ++i;
+                        if (!eq(T.text(i), "]")) throw "";
+                    }
+                    ++i;
+                }catch (...){
+                    dispose(s);
+                    return CLI_Sig_error("Invalid range specification for 'int'.");
+                }
+
+            }else{
+                s.int_range.lo = INT64_MIN;
+                s.int_range.hi = INT64_MAX;
+            }
+
+        }else if (eq(T.text(i), "uint")){
+            ++i;
+            s.type = cli_Int;
+            s.int_range.lo = 0;
+            s.int_range.hi = INT64_MAX;
+
+        }else if (eq(T.text(i), "float")){
+            // FLOATING POINT:
+            ++i;
+            s.type = cli_Float;
+            if (i < T.size() && T.delim(i) && eq(T.text(i), "[")){
+                ++i;
+                try{
+                    if (eq(T.text(i), ":")){
+                        s.float_range.lo = -DBL_MAX;
+                        s.float_range.lo_strict = false;
+                        ++i;
+                    }else{
+                        String text = T.text(i); assert(text.size() > 0);
+                        ++i;
+
+                        if (text.last() == '+'){
+                            s.float_range.lo_strict = true;
+                            text.pop();
+                        }else
+                            s.float_range.lo_strict = false;
+
+                        s.float_range.lo = stringToDouble(text.c_str());
+
+                        if (eq(T.text(i), ":")) ++i;
+                        else throw "";
+                    }
+
+                    if (eq(T.text(i), "]")){
+                        s.float_range.hi = +DBL_MAX;
+                        s.float_range.hi_strict = false;
+                    }else{
+                        String text = T.text(i); assert(text.size() > 0);
+                        ++i;
+
+                        if (text.last() == '-'){
+                            s.float_range.hi_strict = true;
+                            text.pop();
+                        }else
+                            s.float_range.hi_strict = false;
+
+                        s.float_range.hi = stringToDouble(text.c_str());
+
+                        if (!eq(T.text(i), "]")) throw "";
+                    }
+                    ++i;
+                }catch (...){
+                    dispose(s);
+                    return CLI_Sig_error("Invalid range specification for 'float'.");
+                }
+
+            }else{
+                s.float_range.lo = -DBL_MAX;
+                s.float_range.hi = +DBL_MAX;
+                s.float_range.lo_strict = false;
+                s.float_range.hi_strict = false;
+            }
+
+        }else if (eq(T.text(i), "ufloat")){
+            ++i;
+            s.type = cli_Float;
+            s.float_range.lo = 0;
+            s.float_range.hi = +DBL_MAX;
+            s.float_range.lo_strict = false;
+            s.float_range.hi_strict = false;
+
+        }else if (eq(T.text(i), "string")){
+            // STRING:
+            ++i;
+            s.type = cli_String;
+
+        }else if (eq(T.text(i), "any")){
+            // UNIVERSAL TYPE:
+            ++i;
+            s.type = cli_Any;
+
+        }else{
+            dispose(s);
+            return CLI_Sig_error(String("Not a type name: ") + T.text(i));
+        }
+
+    }else{
+        if (eq(T.text(i), "{")){
+            // ENUMERATION:
+            ++i;
+            s.type = cli_Enum;
+            s.enum_range = new Vec<String>;
+
+            for(;;){
+                if (i >= T.size()){
+                    dispose(s); return CLI_Sig_error("String ended before closing '}' in enum."); }
+                if (T.delim(i)){
+                    if (eq(T.text(i), "}")){
+                        ++i;
+                        break;
+                    }else if (eq(T.text(i), ",")){
+                        ++i;
+                        continue;   // -- ignore commas
+                    }else{
+                        dispose(s);
+                        return CLI_Sig_error("Enum not closed with '}'");
+                    }
+                }
+
+                s.enum_range->push(String(T.text(i)));
+                ++i;
+            }
+
+        }else if (eq(T.text(i), "(")){
+            // TUPLE:
+            ++i;
+            s.type = cli_Tuple;
+            s.sub = new Vec<CLI_Sig>;
+
+            for(;;){
+                CLI_Sig ss = parseSignature(T, i);
+                if (ss.type == cli_ERROR){ dispose(s); return ss; }    // -- pass error on upwards
+                s.sub->push(ss);
+
+                if (i >= T.size()){
+                    dispose(s); return CLI_Sig_error("Unexpected end of signature string."); }
+
+                if (T.delim(i)){
+                    if (eq(T.text(i), ")")){
+                        ++i;
+                        break;
+                    }else if (eq(T.text(i), ",")){
+                        ++i;
+                        continue;   // -- ignore commas
+                    }
+                }
+            }
+
+        }else if (eq(T.text(i), "[")){
+            // LIST:
+            ++i;
+            s.type = cli_List;
+            s.sub = new Vec<CLI_Sig>;
+            CLI_Sig ss = parseSignature(T, i);
+            if (ss.type == cli_ERROR){ dispose(s); return ss; }    // -- pass error on upwards
+            s.sub->push(ss);
+
+            if (i >= T.size()){
+                dispose(s); return CLI_Sig_error("Unexpected end of signature string."); }
+            if (!T.delim(i) || !eq(T.text(i), "]")){
+                dispose(s); return CLI_Sig_error("List signature not closed with ']'."); }
+            ++i;
+
+        }else{
+            dispose(s); return CLI_Sig_error("Misplaced delimiter character."); }
+    }
+
+    return s;
+}
+
+
+//- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+// Constructs a signature 'CLI_Sig' from a textual representation.
+CLI_Sig CLI_parseSignature(cchar* text)
+{
+    CLI_Tokens T;
+    T.tokenize(text, true);
+
+    uind i = 0;
+    CLI_Sig ret = parseSignature(T, i);
+
+    if (i != T.size()){
+        dispose(ret);
+        ret = CLI_Sig_error("Extra characters."); }
+
+    if (ret.type == cli_ERROR){
+        *ret.error_msg = String("SIGNATURE PARSE ERROR! ") + (*ret.error_msg);
+        if (i < T.size()){
+            String tail;
+            bool last_was_delim = true;
+            for (; i < T.size(); i++){
+                if (!last_was_delim && !T.delim(i))
+                    tail += ' ';
+                tail += T.text(i);
+                last_was_delim = T.delim(i);
+            }
+            (*ret.error_msg) += "\nUNPARSED TAIL: ", tail;
+        }
+    }
+    return ret;
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Values:
+
+
+static
+CLI_Val parseValue(CLI_Tokens& T, uind& i)
+{
+    if (i >= T.size())
+        return CLI_Val_error("Unexpected end of value string.");
+
+    CLI_Val v;
+    v.string_val = String(T.text(i));
+
+    if (!T.delim(i)){
+        // STRING:
+        ++i;
+        v.type = cli_String;
+
+    }else{
+        cchar*       end_char = NULL;
+        CLI_UnivEnum type = cli_ERROR;
+
+        if (eq(T.text(i), "(")){
+            type = cli_Tuple;
+            end_char = ")";
+        }else if (eq(T.text(i), "[")){
+            type = cli_List;
+            end_char = "]";
+        }
+
+        if (type != cli_ERROR){
+            // TUPLE or LIST:
+            ++i;
+            if (i >= T.size()){
+                dispose(v); return CLI_Val_error((type == cli_Tuple) ? "Tuple ended before closing ')'." : "List ended before closing ']'."); }
+            v.type = type;
+            v.sub = new Vec<CLI_Val>;
+
+            if (eq(T.text(i), end_char))
+                ++i;
+            else{
+                for(;;){
+                    CLI_Val vv = parseValue(T, i);
+                    if (vv.type == cli_ERROR){ dispose(v); return vv; }    // -- pass error on upwards
+                    v.sub->push(vv);
+                    if (i >= T.size()){
+                        dispose(v); return CLI_Val_error((type == cli_Tuple) ? "Tuple ended before closing ')'." : "List ended before closing ']'."); }
+
+                    if (T.delim(i)){
+                        if (eq(T.text(i), end_char)){
+                            ++i;
+                            break;
+                        }else if (eq(T.text(i), ",")){
+                            ++i;
+                            continue;   // -- ignore commas
+                        }
+                    }
+                }
+            }
+
+        }else
+            return CLI_Val_error(String("Unexpected delimiter character: ") + v.string_val);
+    }
+
+    return v;
+}
+
+
+// Constructs a unmatched 'CLI_Val' value from a textual representation. All non-composite
+// elements are strings
+CLI_Val CLI_parseValue(cchar* text)
+{
+    CLI_Tokens T;
+    T.tokenize(text, false);
+
+    uind i = 0;
+    CLI_Val ret = parseValue(T, i);
+    if (ret.type == cli_ERROR)
+        (*ret.error_msg) = String("VALUE PARSE ERROR! ") + (*ret.error_msg);
+    return ret;
+}

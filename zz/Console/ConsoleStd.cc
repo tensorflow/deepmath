@@ -12,7 +12,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "ConsoleStd.hh"
+#include "zz/Console/ConsoleStd.hh"
 
 namespace ZZ {
 using namespace std;

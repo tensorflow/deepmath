@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__Kernel_hh
 #define ZZ__HolLight__Kernel_hh
 
-#include "Types.hh"
+#include "zz/HolLight/Types.hh"
 
 namespace ZZ {
 using namespace std;

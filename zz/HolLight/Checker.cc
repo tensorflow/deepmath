@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "Checker.hh"
-#include "Parser.hh"
-#include "RuleApply.hh"
-#include "Printing.hh"
+#include "zz/HolLight/Checker.hh"
+#include "zz/HolLight/Parser.hh"
+#include "zz/HolLight/RuleApply.hh"
+#include "zz/HolLight/Printing.hh"
 
 namespace ZZ {
 using namespace std;

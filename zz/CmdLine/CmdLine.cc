@@ -12,7 +12,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "CmdLine.hh"
+#include "zz/CmdLine/CmdLine.hh"
 
 
 namespace ZZ {
@@ -38,11 +38,11 @@ ZZ_Finalizer(cli_clear, -10050) {
 }
 
 
-#include "CmdLine_UnivType.icc"
-#include "CmdLine_Parse.icc"
-#include "CmdLine_Match.icc"
-#include "CmdLine_Debug.icc"
-#include "CmdLine_CLI.icc"
+#include "zz/CmdLine/CmdLine_UnivType.icc"
+#include "zz/CmdLine/CmdLine_Parse.icc"
+#include "zz/CmdLine/CmdLine_Match.icc"
+#include "zz/CmdLine/CmdLine_Debug.icc"
+#include "zz/CmdLine/CmdLine_CLI.icc"
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

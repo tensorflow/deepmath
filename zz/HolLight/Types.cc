@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "Types.hh"
+#include "zz/HolLight/Types.hh"
 
 namespace ZZ {
 using namespace std;

@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "CmdLine/CmdLine.hh"
-#include "Printing.hh"
-#include "Checker.hh"
-#include "PremiseViewer.hh"
-#include "WriteProof.hh"
+#include "zz/CmdLine/CmdLine.hh"
+#include "zz/HolLight/Printing.hh"
+#include "zz/HolLight/Checker.hh"
+#include "zz/HolLight/PremiseViewer.hh"
+#include "zz/HolLight/WriteProof.hh"
 
 using namespace ZZ;
 

@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef ZZ__HolLight__Hashing_hh
 #define ZZ__HolLight__Hashing_hh
 
-#include "Generics/Map.hh"
-#include "Generics/Set.hh"
-#include "Generics/CuckooSet.hh"
+#include "zz/Generics/Map.hh"
+#include "zz/Generics/Set.hh"
+#include "zz/Generics/CuckooSet.hh"
 
 namespace ZZ {
 using namespace std;

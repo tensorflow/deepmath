@@ -4,21 +4,21 @@
 //| Author(s)   : Niklas Een
 //| Module      : CmdLine
 //| Description : Command line parsing.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
 //| Full documentation can be found in CmdLine_README.txt
-//| 
+//|
 //| To add an argument to the global command-line interface object 'cli', use:
-//| 
+//|
 //|     cli.add(arg_name, arg_sig, default_value, help_text [, arg_pos])
-//|     
+//|
 //| Argument position is optional and can be left out. Special default value 'arg_REQUIRED'
 //| denotes a required argument. It should be used with positional arguments only.
-//| 
+//|
 //| Example of argument signatures:
-//| 
+//|
 //|     int, int[1:10], ufloat, string, {one,two,three}, (uint,string), [string], int | {none}, any
 //|________________________________________________________________________________________________
 
@@ -41,8 +41,8 @@ enum CLI_UnivEnum {
     cli_String,
     cli_Tuple,
     cli_List,
-    cli_Any,            // -- only present in signatures 
-    cli_Or,             // -- only present in signatures 
+    cli_Any,            // -- only present in signatures
+    cli_Or,             // -- only present in signatures
 
     CLI_UnivEnum_size
 };

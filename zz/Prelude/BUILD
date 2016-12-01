@@ -10,7 +10,7 @@ cc_library(
     ]),
     defines = [
         "__BAZEL_BUILD__",
-        "ZZ_Prelude_hh=\\\"Prelude/Prelude.hh\\\"",
+        "ZZ_Prelude_hh=\\\"zz/Prelude/Prelude.hh\\\"",
         "ZZ_PTHREADS",
         #"ZZ_USE_STL",   # -- uncomment to use 'std::vector' as implementation of 'Vec' (uses ~50% more memory)
         #"ZZ_BIG_MODE",  # -- uncomment to enable >4B Types/Terms/Theorems or proof-steps (almost doubles memory consumption)

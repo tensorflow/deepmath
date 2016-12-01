@@ -4,5 +4,5 @@ cc_library(
     name = "CmdLine",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh","*.icc"]),
-    deps = ["@zz//Prelude"],
+    deps = ["//zz/Prelude"],
 )

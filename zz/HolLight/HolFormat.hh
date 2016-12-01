@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__HolFormat_hh
 #define ZZ__HolLight__HolFormat_hh
 
-#include "HolOperators.hh"
+#include "zz/HolLight/HolOperators.hh"
 
 namespace ZZ {
 using namespace std;

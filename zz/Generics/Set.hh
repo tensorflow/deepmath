@@ -4,14 +4,14 @@
 //| Author(s)   : Niklas Een
 //| Module      : Generics
 //| Description : A generic hash set.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| If you don't want to use the default hash function (see 'Prelude/Hash.hh'), the second template
 //| parameter 'Hash_' should be a struct of the following type:
-//| 
+//|
 //|      struct Hash_Param {
 //|          uint64 hash (K key)          const { return hash_(key); }
 //|          bool   equal(K key1, K key2) const { return equal_(key1, key2); }

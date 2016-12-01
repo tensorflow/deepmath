@@ -4,11 +4,11 @@
 //| Author(s)   : Niklas Een
 //| Module      : Generics
 //| Description : Map from an integer-like type to some arbitrary type 'T'.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //|________________________________________________________________________________________________
 
 
@@ -65,7 +65,7 @@ public:
     Key  inv   (uind i) const { return index.inv(i); }
 
     void clear(bool dispose = false) { data.clear(dispose); }
-        // -- only clears the map, does not change 'nil' or 'index' (so you can continue to use 
+        // -- only clears the map, does not change 'nil' or 'index' (so you can continue to use
         // the map for the same purpose).
 
     void copyTo(IntMap& dst) const { data.copyTo(dst.data); dst.nil = nil; dst.index = index; }
@@ -75,7 +75,7 @@ public:
     Vec<Value>&       base()       { return data; }
     const Vec<Value>& base() const { return data; }
     uind              size() const { return base().size(); }
-        // -- ONLY use 'size()' if your 'index' functor is the identity function! (otherwise, iterate 
+        // -- ONLY use 'size()' if your 'index' functor is the identity function! (otherwise, iterate
         // using the vector returned by 'base()').
 
   #if (__cplusplus >= 201103L)

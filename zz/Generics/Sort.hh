@@ -4,68 +4,68 @@
 //| Author(s)   : Niklas Een
 //| Module      : Generics
 //| Description : Combinator library for sorting.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| Generic sort functions and combinators. Work on any class ("sorting object") with the following
 //| methods:
-//| 
+//|
 //|     struct Sob {
 //|         // Mandatory:
 //|         //
 //|         bool lessThan(uind i, uind j) const; // Is i:th element strictly less than the 'j:th'?
 //|         void swap(uind i, uind j);           // Swap i:th and j:th element.
 //|         uind size() const;                   // Legal indices are from '0' to 'size() - 1'.
-//| 
+//|
 //|         // For 'sortUnique()':
 //|         //
 //|         void shrinkTo(uind new_size);        // Shrink the final container to this size
 //|         void dispose(uind i);                // If defined, called on the discarded elements.
 //|     };
-//| 
+//|
 //| If 'dispose()' is not defined, it is up to the container's 'shrinkTo()' method to call
 //| the destructor or do the approprieate thing for the last 'size() - new_size' elements lost
 //| in the shrink operation.
-//| 
+//|
 //| Sorting objects for vector-like types 'V<T>' (including 'Vec<T>' and 'Array<T>') is predefined
 //| through the function 'sob()':
-//| 
+//|
 //|     sob ( V<T>& t,  [optional:] LessThan lt ,  [optional:] Disposer disposer )
-//|     
-//| A less-than object should implement:    
-//| 
+//|
+//| A less-than object should implement:
+//|
 //|     struct MyLessThan {
 //|         typedef T Key;
 //|         bool operator()(const Key& x, const Key& y) const { return "my x < y expression"; } };
-//|     };    
-//| 
+//|     };
+//|
 //| Objects can then be combined using combinators:
-//| 
+//|
 //|     ordReverse  (s)
 //|     ordByFirst  (s0, s1)
 //|     ordLexico   (s0, s1)
 //|     ordStabilize(s)
-//|     
+//|
 //| Finally, two sorting functions are defined:
-//| 
+//|
 //|     sobSort(s)
 //|     sobSortUnique(s)
-//|     
+//|
 //| Examples:
-//| 
+//|
 //|     sobSort(ordByFirst(sob(my_vec), sob(my_other_vec)));
 //|     sobSortUnique(sob(my_int_vec, LessThan_default<int>, int_disposer));
-//|     
-//| For convenience, the following short-cuts (functions) are defined for vector-like objects 
+//|
+//| For convenience, the following short-cuts (functions) are defined for vector-like objects
 //| v and w:
-//| 
+//|
 //|     sort        (v)
 //|     sort_reverse(v)
 //|     sort_byFirst(v, w)
 //|     sort_lexico (v, w)
-//| 
+//|
 //|     sortUnique        (v)
 //|     sortUnique_reverse(v)
 //|     sortUnique_byFirst(v, w)

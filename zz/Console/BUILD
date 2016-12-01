@@ -4,7 +4,7 @@ cc_library(
     name = "Console",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh"]),
-    deps = ["@zz//Prelude"],
+    deps = ["//zz/Prelude"],
 )
 
 cc_binary(

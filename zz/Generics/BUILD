@@ -4,5 +4,5 @@ cc_library(
     name = "Generics",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh"]),
-    deps = ["@zz//Prelude"],
+    deps = ["//zz/Prelude"],
 )

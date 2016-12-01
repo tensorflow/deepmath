@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__ProofStore_hh
 #define ZZ__HolLight__ProofStore_hh
 
-#include "Generics/IntSet.hh"
-#include "ParserTypes.hh"
+#include "zz/Generics/IntSet.hh"
+#include "zz/HolLight/ParserTypes.hh"
 
 namespace ZZ {
 using namespace std;

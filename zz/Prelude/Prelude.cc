@@ -11,18 +11,18 @@
 //|
 //|________________________________________________________________________________________________
 
-#include "Prelude.hh"
+#include "zz/Prelude/Prelude.hh"
 
 // Implementation:
-#include "Macros.icc"
-#include "Mem.icc"
-#include "Hash.icc"
-#include "Streams.icc"
-#include "Resources.icc"
-#include "File.icc"
-#include "Console.icc"
-#include "Utility.icc"
-#include "Init.icc"
-#include "Format.icc"
-#include "Profile.icc"
-#include "Signals.icc"
+#include "zz/Prelude/Macros.icc"
+#include "zz/Prelude/Mem.icc"
+#include "zz/Prelude/Hash.icc"
+#include "zz/Prelude/Streams.icc"
+#include "zz/Prelude/Resources.icc"
+#include "zz/Prelude/File.icc"
+#include "zz/Prelude/Console.icc"
+#include "zz/Prelude/Utility.icc"
+#include "zz/Prelude/Init.icc"
+#include "zz/Prelude/Format.icc"
+#include "zz/Prelude/Profile.icc"
+#include "zz/Prelude/Signals.icc"

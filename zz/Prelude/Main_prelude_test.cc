@@ -1,4 +1,4 @@
-#include "Prelude.hh"
+#include "zz/Prelude/Prelude.hh"
 
 using namespace ZZ;
 

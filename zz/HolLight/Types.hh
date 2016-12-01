@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__Types_hh
 #define ZZ__HolLight__Types_hh
 
-#include "Hashing.hh"
-#include "List.hh"
+#include "zz/HolLight/Hashing.hh"
+#include "zz/HolLight/List.hh"
 
 namespace ZZ {
 using namespace std;

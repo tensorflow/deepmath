@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "HolOperators.hh"
+#include "zz/HolLight/HolOperators.hh"
 
 namespace ZZ {
 using namespace std;

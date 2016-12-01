@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__DetailedViewer_hh
 #define ZZ__HolLight__DetailedViewer_hh
 
-#include "ProofStore.hh"
+#include "zz/HolLight/ProofStore.hh"
 
 namespace ZZ {
 using namespace std;

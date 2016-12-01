@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "HolFormat.hh"
+#include "zz/HolLight/HolFormat.hh"
 
 #include <memory>           // -- for 'unique_ptr'
 
-#include "HolOperators.hh"
+#include "zz/HolLight/HolOperators.hh"
 #include "Printing.hh"      // -- for printing types in 'simpleFmtTerm()'.
 
 #define TRANSLATE_EQ_TO_EQUIV

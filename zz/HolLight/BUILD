@@ -5,10 +5,10 @@ cc_library(
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh"]),
     deps = [
-        "@zz//CmdLine",
-        "@zz//Console",
-        "@zz//Generics",
-        "@zz//Prelude",
+        "//zz/CmdLine",
+        "//zz/Console",
+        "//zz/Generics",
+        "//zz/Prelude",
     ],
 )
 

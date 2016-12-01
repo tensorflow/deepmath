@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "PremiseViewer.hh"
-#include "Console/ConsoleStd.hh"
-#include "HolFormat.hh"
-#include "ProofStore.hh"
-#include "DetailedViewer.hh"
+#include "zz/HolLight/PremiseViewer.hh"
+#include "zz/Console/ConsoleStd.hh"
+#include "zz/HolLight/HolFormat.hh"
+#include "zz/HolLight/ProofStore.hh"
+#include "zz/HolLight/DetailedViewer.hh"
 
 namespace ZZ {
 using namespace std;

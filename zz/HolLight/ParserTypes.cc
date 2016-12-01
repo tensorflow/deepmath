@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "ParserTypes.hh"
+#include "zz/HolLight/ParserTypes.hh"
 
 namespace ZZ {
 using namespace std;

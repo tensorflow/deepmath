@@ -13,7 +13,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "Console.hh"
+#include "zz/Console/Console.hh"
 #include <termios.h>
 
 namespace ZZ {

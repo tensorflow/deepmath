@@ -16,8 +16,8 @@ limitations under the License.
 #include ZZ_Prelude_hh
 
 #define OPAQUE_HOL_TYPES    // -- makes sure this file does not break the HOL-light kernel contract
-#include "RuleApply.hh"
-#include "Kernel.hh"
+#include "zz/HolLight/RuleApply.hh"
+#include "zz/HolLight/Kernel.hh"
 
 namespace ZZ {
 using namespace std;

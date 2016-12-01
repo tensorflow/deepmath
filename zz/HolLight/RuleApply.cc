@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 
 #define OPAQUE_HOL_TYPES    // -- makes sure this file does not break the HOL-light kernel contract
 #include "RuleApply.hh"

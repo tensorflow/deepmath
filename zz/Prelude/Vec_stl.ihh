@@ -33,7 +33,7 @@ public:
     Vec(Tag_copy, const W& v) : vector<V>(v.begin(), v.end()) {}
     Vec(Tag_reserve, uind size) : vector<V>() { vector<V>::reserve(size); }
     Vec(const initializer_list<T>& elems) : vector<V>(elems) {}     // <<== doesn't work for 'bool'
-    Vec(Vec<T>&& other) : vector<V>(other) {}
+    Vec(Vec<T>&& other) : vector<V>(move(other)) {}
 
     Vec<T>& operator=(Vec<T>&& other) { other.moveTo(*this); return *this; }
 
@@ -72,7 +72,7 @@ public:
   //  Stack interface:
 
     void     push  (const T& elem = T()) { vector<V>::push_back(elem); }
-    void     push  (T&& elem)            { vector<V>::push_back(elem); }
+    void     push  (T&& elem)            { vector<V>::push_back(move(elem)); }
     void     pushQ (const T& elem)       { vector<V>::push_back(elem); }   // -- STL has no version without checks
     const T& last  (uind i = 0) const { return *at(size()-i-1); }
     T&       last  (uind i = 0)       { return *at(size()-i-1); }

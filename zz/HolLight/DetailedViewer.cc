@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "DetailedViewer.hh"
-#include "ZZ_Console.hh"
+#include "Console/ConsoleStd.hh"
 #include "PremiseViewer.hh"
 #include "HolFormat.hh"
 

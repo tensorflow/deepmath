@@ -4,14 +4,14 @@
 //| Author(s)   : Niklas Een
 //| Module      : CmdLine
 //| Description : Command line parsing.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
 //| Documentation can be found in CmdLine_README.txt
 //|________________________________________________________________________________________________
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "CmdLine.hh"
 
 

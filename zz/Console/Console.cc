@@ -12,7 +12,7 @@
 //| Works best with 'xterm' or 'Eterm', slow with 'konsole', really sluggish with 'gnome-terminal'.
 //|________________________________________________________________________________________________
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "Console.hh"
 #include <termios.h>
 

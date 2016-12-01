@@ -51,6 +51,14 @@ Defines that control compilation:
   #include <stdint.h>
 #endif
 
+#if defined(__BAZEL_BUILD__)
+  #if defined(NDEBUG)
+    #undef NDEBUG
+  #else
+    #define ZZ_DEBUG
+  #endif
+#endif
+
 #include <cassert>
 #include <cerrno>
 #include <cstdarg>
@@ -141,7 +149,10 @@ Defines that control compilation:
 #include "Utility.ihh"
 #include "Format.ihh"
 #include "Profile.ihh"
-
+#if !defined(__BAZEL_BUILD__)
+  #include "ScopeGuard.ihh"
+  #include "ScopedPtr.ihh"
+#endif
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 

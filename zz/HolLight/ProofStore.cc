@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "ProofStore.hh"
 #include "Parser.hh"
 #include "RuleApply.hh"
@@ -121,6 +121,8 @@ Thm ProofStore::evalThm(th_t idx)
     if (!idx2thm[idx]){
         line_t n = th_idx2line[idx];
         idx2thm(idx) = produceThm(rule(n), translateArgs(n));
+        if (!thm2line[idx2thm[idx]])   // -- need this check since the same theorem can be generated multiple times (and only the first is safe to use if we want to avoid cycles)
+          thm2line(idx2thm[idx]) = n;
     }
     return idx2thm[idx];
 }

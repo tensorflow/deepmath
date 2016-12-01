@@ -98,6 +98,9 @@ inline ArgKind makeIndex(ArgKind kind) {    // -- move from 'arg_TYPE -> arg_TYP
     assert(kind >= arg_TYPE && kind <= arg_THM);
     return ArgKind((int)kind - (int)arg_TYPE + (int)arg_TYPE_IDX); }
 
+inline ArgKind makeNoIndex(ArgKind kind) {
+    return (kind >= arg_TYPE_IDX && kind <= arg_THM_IDX) ? ArgKind((int)kind - (int)arg_TYPE_IDX + (int)arg_TYPE) : kind; }
+
 
 // Union type for parse-rule argument. All elements of union must be derived from 'IdBase' without adding any state variables.
 struct Arg {

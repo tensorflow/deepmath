@@ -95,6 +95,8 @@ struct Type : Composite<TypeData> {
 #endif
 };
 
+Make_IdBase_MkIndex(Type);
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Term = var(Var) | cnst(Cnst) | comb(Term,Term) | abs(Var,Type,Term)
@@ -223,6 +225,8 @@ struct TSubst {
     TSubst(Type a = Type(), Type ty = Type()) : a(a), ty(ty) {}
 };
 
+Make_IdBase_MkIndex(Term);
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Thm  = (hyps=Set<Term>, concl=Term)
@@ -246,6 +250,8 @@ struct Thm : Composite<ThmData> {
     Term       concl() const { return Term(me().data[1]); }
 #endif
 };
+
+Make_IdBase_MkIndex(Thm);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

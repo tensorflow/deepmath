@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "PremiseViewer.hh"
-#include "ZZ_Console.hh"
+#include "Console/ConsoleStd.hh"
 #include "HolFormat.hh"
 #include "ProofStore.hh"
 #include "DetailedViewer.hh"
@@ -71,7 +71,7 @@ ColumnLT<T> columnLT(Vec<T> const& prio) { return ColumnLT<T>(prio); }
 // <<== This is hackish; will clean this up
 void navigate(ConEvent ev, uind view_size, uint& page_rows, uind& top, uind& cursor, bool& moved_cursor, uint no_cursor_extra_rows, uint top_margin)
 {
-    auto sub = [](uint& num, uint amount) { num = (amount > num) ? 0 : num - amount; };
+    auto sub = [](uind& num, uint amount) { num = (amount > num) ? 0 : num - amount; };
 
     if (ev.type == ev_KEY){
         if (ev.key == 27){
@@ -673,6 +673,17 @@ void PremiseViewer::eventLoop()
                 col_premises.xoffset += horz_step_size;
             if (ev.key == (chr_CSI|0x44))       // arrow left
                 sub(col_premises.xoffset, horz_step_size);
+
+#if 1   /*DEBUG*/
+            if (ev.key == 'z'){
+                view.clear();
+                for (uind n = 0; n < P.size(); n++)
+                    if (P.rule(n) == rule_New_TDef)
+                        view.push(n);
+                moved_cursor = true;
+                cursor = UIND_MAX;
+            }
+#endif  /*END DEBUG*/
 
         }else if (ev.type == ev_MOUSE){
             if (ev.type == ev_MOUSE && ev.key == 'l' && ev.row == 0){

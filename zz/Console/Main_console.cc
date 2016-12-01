@@ -1,4 +1,4 @@
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "ConsoleStd.hh"
 
 using namespace ZZ;

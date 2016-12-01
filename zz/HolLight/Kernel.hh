@@ -23,15 +23,51 @@ using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Definitional information:
 
 
-Thm  getAxiom(Axiom ax);
-Type getType (Cnst  c );
-uint getArity(TCon  tc);
+struct Ax {
+    Axiom   name;
+    Thm     th;
+    explicit operator bool() const { return bool(name); }
+};
 
-Vec<Pair<Axiom, Thm>> kernelAxioms();
-Vec<Pair<TCon, uint>> kernelTypecons();     // -- 'uint' is arity of type-constructor
-Vec<Pair<Cnst, Type>> kernelConsts();
+
+struct Def {
+    Cnst    name;
+    Term    def;    // -- polymorphically typed term of the constant
+    Thm     th;     // -- theorem introducting constant
+    explicit operator bool() const { return bool(name); }
+};
+
+
+struct TDef {
+    uint arity;     // -- derived from 'witness': 'setOf_tvars(witness.concl().fun()).size()'
+    TCon name;
+    Cnst abs_name;
+    Cnst rep_name;
+    Thm  witness;
+    Thm  th;        // -- theorem introducting type
+
+    TDef(uint arity, TCon name, Cnst abs_name, Cnst rep_name, Thm witness, Thm th) :
+        arity(arity), name(name), abs_name(abs_name), rep_name(rep_name), witness(witness), th(th) {}
+
+    TDef() : arity(UINT_MAX) {}
+    explicit operator bool() const { return arity != UINT_MAX; }
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+Ax   getAxiom(Axiom name);
+Def  getDef  (Cnst  name);
+TDef getTDef (TCon  name);
+
+Vec<Ax  > kernelAxioms();
+Vec<Def > kernelConsts();
+Vec<TDef> kernelTypecons();
+
 
 Thm kernel_REFL   (Term tm);
 Thm kernel_BETA   (Term tm);

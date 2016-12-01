@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__PremiseViewer_hh
 #define ZZ__HolLight__PremiseViewer_hh
 
-#include "ZZ_Console.hh"
+#include "Console/Console.hh"
 
 namespace ZZ {
 using namespace std;

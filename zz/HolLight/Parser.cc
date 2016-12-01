@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "Parser.hh"
-#include "ZZ/Generics/LineReader.hh"
+#include "Generics/LineReader.hh"
 
 
 namespace ZZ {
@@ -58,8 +58,8 @@ RulePattern rule_patterns[] = {
 
     { 'A', "thm" , "New_Ax"  , "$axiom term" },     // -- term is of type bool
     { 'F', "thm" , "New_Def" , "$cnst term" },      // -- introduces a polymorphic constant (think of it as a "constant constructor", with 'c' rule instantiating a specific subtype)
-    { 'Y', "thm" , "New_TDef", "$tcon $cnst $cnst thm thm thm" },
-                                                    // -- pushes a null theorem; the first two theorems are thrown away, the third "existence proof"
+    { 'Y', "thm" , "New_TDef", "$tcon $cnst $cnst term term thm" },
+                                                    // -- pushes a null theorem; the two terms can be extracted from the theorem ("existence proof")
 
     { '1', "thm" , "TDef_Ex1", "thm" },             // -- extract |- abs(rep a:P) = a
     { '2', "thm" , "TDef_Ex2", "thm" },             // -- extract |- P r = (rep(abs r) = r)

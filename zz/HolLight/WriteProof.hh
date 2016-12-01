@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include ZZ_Prelude_hh
+#ifndef ZZ__HolLight__WriteProof_hh
+#define ZZ__HolLight__WriteProof_hh
 
+#include "ProofStore.hh"
 
 namespace ZZ {
 using namespace std;
@@ -23,10 +25,10 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-bool pp_full_internal = false;
-bool pp_use_ansi      = true;
-bool pp_show_types    = false;
+void writeProof(String input_file, String output_file);
+void writeProof(ProofStore& P, Vec<Pair<Thm,Str>> const& named_thms, String output_file);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 }
+#endif

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__HolOperators_hh
 #define ZZ__HolLight__HolOperators_hh
 
-#include "ZZ/Generics/IntMap.hh"
+#include "Generics/IntMap.hh"
 #include "Types.hh"
 
 namespace ZZ {

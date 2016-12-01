@@ -11,7 +11,7 @@
 //|
 //|________________________________________________________________________________________________
 
-#include "Prelude.hh"
+#include ZZ_Prelude_hh
 #include "ConsoleStd.hh"
 
 namespace ZZ {

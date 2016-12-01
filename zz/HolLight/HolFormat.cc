@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
-#include "HolFormat.hh"
+#include ZZ_Prelude_hh
+#include "zz/HolLight/HolFormat.hh"
 
 #include <memory>           // -- for 'unique_ptr'
 
-#include "HolOperators.hh"
+#include "zz/HolLight/HolOperators.hh"
 #include "Printing.hh"      // -- for printing types in 'simpleFmtTerm()'.
 
 #define TRANSLATE_EQ_TO_EQUIV

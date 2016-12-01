@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef ZZ__HolLight__ParserTypes_hh
 #define ZZ__HolLight__ParserTypes_hh
 
-#include "Types.hh"
+#include "zz/HolLight/Types.hh"
 
 namespace ZZ {
 using namespace std;
@@ -97,6 +97,9 @@ inline bool isComposite(ArgKind t) {
 inline ArgKind makeIndex(ArgKind kind) {    // -- move from 'arg_TYPE -> arg_TYPE_IDX' etc
     assert(kind >= arg_TYPE && kind <= arg_THM);
     return ArgKind((int)kind - (int)arg_TYPE + (int)arg_TYPE_IDX); }
+
+inline ArgKind makeNoIndex(ArgKind kind) {
+    return (kind >= arg_TYPE_IDX && kind <= arg_THM_IDX) ? ArgKind((int)kind - (int)arg_TYPE_IDX + (int)arg_TYPE) : kind; }
 
 
 // Union type for parse-rule argument. All elements of union must be derived from 'IdBase' without adding any state variables.

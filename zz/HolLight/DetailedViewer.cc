@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
-#include "DetailedViewer.hh"
-#include "ZZ_Console.hh"
-#include "PremiseViewer.hh"
-#include "HolFormat.hh"
+#include ZZ_Prelude_hh
+#include "zz/HolLight/DetailedViewer.hh"
+#include "zz/Console/ConsoleStd.hh"
+#include "zz/HolLight/PremiseViewer.hh"
+#include "zz/HolLight/HolFormat.hh"
 
 namespace ZZ {
 using namespace std;

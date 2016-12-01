@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
-#include "Kernel.hh"
+#include ZZ_Prelude_hh
+#include "zz/HolLight/Kernel.hh"
 #include "Printing.hh"  // -- for debugging
 
 namespace ZZ {
@@ -118,67 +118,43 @@ inline size_t size(List<T> list) {
 // Kernel state variables:
 
 
-static Vec<Thm> kernel_axioms;
-    // -- map from 'Axiom' to theorem that is axiomatically true (no hypotheses).
+static Vec<Ax> kernel_axioms;
     // In 'fusion.ml' it's called "the_axioms". Elements are populated from from 'kernel_New_Ax()'.
 
-static Vec<uint> kernel_typecons;
-    // -- map from 'TCon' to the arity of the type-constructor.
+static Vec<Def> kernel_consts;
+    // In 'fusion.ml' it's called "the_term_constants". Except for primitive constants '=', '@' and
+    // internal '`&', elements are populated from 'kernel_New_Def()' and 'kernel_New_TDef'.
+
+static Vec<TDef> kernel_typecons;
     // In 'fusion.ml' it's called "the_type_constants". Except for the primitive types 'bool' and
     // 'fun', all elements are constructed from 'kernel_New_TDef()'.
 
-static Vec<Type> kernel_consts;
-    // -- map from 'Cnst' to the (polymorphic) type of the constant (can be thought of as a
-    // "constant-constructor"). In 'fusion.ml' it's called "the_term_constants". Elements are
-    // populated from 'kernel_New_Def()' and 'kernel_New_TDef'.
-
-constexpr uint NO_ARITY = UINT_MAX;     // -- pad-value for 'kernel_typecons' in case used 'tcon's have gaps
-
 
 ZZ_Initializer(predefined_typecons_and_consts, 10) {    // -- prio 10 to go after initialization in 'Types.cc'
-    kernel_typecons(+tcon_bool, NO_ARITY) = 0;
-    kernel_typecons(+tcon_fun , NO_ARITY) = 2;
-    kernel_typecons(+tcon_ind , NO_ARITY) = 0;
+    kernel_typecons(+tcon_bool) = TDef{0, tcon_bool, Cnst(), Cnst(), Thm(), Thm()};
+    kernel_typecons(+tcon_fun ) = TDef{2, tcon_fun , Cnst(), Cnst(), Thm(), Thm()};
+    kernel_typecons(+tcon_ind ) = TDef{0, tcon_ind , Cnst(), Cnst(), Thm(), Thm()};
 
-    kernel_consts(+cnst_eq  ) = eqType(type_alpha);
-    kernel_consts(+cnst_hilb) = funType(funType(type_alpha, type_bool), type_alpha);
-    kernel_consts(+cnst_iand) = type_booleq;
+    kernel_consts(+cnst_eq  ) = Def{cnst_eq  , tmCnst(cnst_eq  , eqType(type_alpha))};  // -- built-in constants have no further definition (define them to themselves)
+    kernel_consts(+cnst_hilb) = Def{cnst_hilb, tmCnst(cnst_hilb, funType(funType(type_alpha, type_bool), type_alpha))};
+    kernel_consts(+cnst_iand) = Def{cnst_iand, tmCnst(cnst_iand, type_booleq)};
 }
 
 
-Thm  getAxiom(Axiom ax) { return kernel_axioms  [+ax]; }
-Type getType (Cnst  c ) { return kernel_consts  [+c ]; }
-uint getArity(TCon  tc) { return kernel_typecons[+tc]; }
+Ax   getAxiom(Axiom ax) { assert(+ax < kernel_axioms  .size()); return kernel_axioms  [+ax]; }
+Def  getDef  (Cnst  c ) { assert(+c  < kernel_consts  .size()); return kernel_consts  [+c ]; }
+TDef getTDef (TCon  tc) { assert(+tc < kernel_typecons.size()); return kernel_typecons[+tc]; }
 
 
-Vec<Pair<Axiom, Thm>> kernelAxioms()
-{
-    Vec<Pair<Axiom, Thm>> ret;
-    for (id_t id = 0; id < kernel_axioms.size(); id++)
-        if (kernel_axioms[id])
-            ret.push(tuple(Axiom(id), kernel_axioms[id]));
-    return ret;
-}
+template<class T>
+Vec<T> nonNull(Vec<T> const& ts) {
+    Vec<T> ret;
+    for (auto&& t : ts) if (t) ret.push(t);
+    return ret; }
 
-
-Vec<Pair<TCon, uint>> kernelTypecons()
-{
-    Vec<Pair<TCon, uint>> ret;
-    for (id_t id = 0; id < kernel_typecons.size(); id++)
-        if (kernel_typecons[id])
-            ret.push(tuple(TCon(id), kernel_typecons[id]));
-    return ret;
-}
-
-
-Vec<Pair<Cnst, Type>> kernelConsts()
-{
-    Vec<Pair<Cnst, Type>> ret;
-    for (id_t id = 0; id < kernel_consts.size(); id++)
-        if (kernel_consts[id])
-            ret.push(tuple(Cnst(id), kernel_consts[id]));
-    return ret;
-}
+Vec<Ax>   kernelAxioms  () { return nonNull(kernel_axioms  ); }
+Vec<Def>  kernelConsts  () { return nonNull(kernel_consts  ); }
+Vec<TDef> kernelTypecons() { return nonNull(kernel_typecons); }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -358,13 +334,12 @@ Thm kernel_INST_T(Thm th, Vec<TSubst>& subs)
 // --------
 //   |- t
 //
-Thm kernel_New_Ax(Axiom ax, Term tm)
+Thm kernel_New_Ax(Axiom name, Term tm)
 {
     ZZ_PTimer_Scope(kernel_New_Ax);
-    // NOTE: 'ax' is just a symbol (name).
     assert(tm.type() == type_bool);
-    kernel_axioms(+ax) = Thm(tm);
-    return kernel_axioms[+ax];
+    kernel_axioms(+name) = Ax{name, Thm(tm)};
+    return kernel_axioms[+name].th;
 }
 
 
@@ -372,13 +347,14 @@ Thm kernel_New_Ax(Axiom ax, Term tm)
 // --------  [if `t` has no free variables and all type-variables are in its type]
 // |- c = t
 //
-Thm kernel_New_Def(Cnst c, Term tm)     // -- new basic definition
+Thm kernel_New_Def(Cnst name, Term tm)     // -- new basic definition
 {
     ZZ_PTimer_Scope(kernel_New_Def);
     assert(!hasFreeVars(tm));
     assert(setOf_tvars(tm).subsetOf(setOf_tvars(tm.type())));
-    kernel_consts(+c) = tm.type();
-    return Thm(makeEqTerm(tmCnst(c, tm.type()), tm));
+    Thm ret = Thm(makeEqTerm(tmCnst(name, tm.type()), tm));
+    kernel_consts(+name) = Def{name, tm, ret};
+    return ret;
 }
 
 
@@ -399,22 +375,21 @@ Thm kernel_New_Def(Cnst c, Term tm)     // -- new basic definition
 //
 // From 'fusion.ml': This function now involves no logical constants beyond equality.
 //
-Thm kernel_New_TDef(TCon tc_name, Cnst abs_name, Cnst rep_name, Thm th)
+Thm kernel_New_TDef(TCon tc_name, Cnst abs_name, Cnst rep_name, Thm th_wit)
 {
     ZZ_PTimer_Scope(kernel_New_TDef);
     // NOTE! 'tc_name' is the name of the new type-constructor. If it has no type-argument, the
     // same name will often be used for the type constructed from it (e.g. "bool", but not "list"
     // which takes an argument "list(A)" and specialize it into "list(num)" or "list(bool)".)
-    assert(th.hyps().empty());
-    assert(th.concl().is_comb());
-    Term P = th.concl().fun();
-    Term t = th.concl().arg();
+    assert(th_wit.hyps().empty());
+    assert(th_wit.concl().is_comb());
+    Term P = th_wit.concl().fun();
+    Term t = th_wit.concl().arg();
     assert(!hasFreeVars(P));
 
     SSet<TVar> P_tvars = setOf_tvars(P);
-    assert(kernel_typecons(+tc_name, NO_ARITY) == NO_ARITY); // -- type-constructor must have a new name
-    kernel_typecons(+tc_name, NO_ARITY) = P_tvars.size();
-
+    uint arity = P_tvars.size();
+    assert(!kernel_typecons(+tc_name)); // -- type-constructor must have a new name
     SSet<Type> tc_args = P_tvars.map([](TVar v) { return Type(v); });
     Type ty_new = Type(tc_name, tc_args);
     Type ty_old = t.type();
@@ -423,11 +398,11 @@ Thm kernel_New_TDef(TCon tc_name, Cnst abs_name, Cnst rep_name, Thm th)
 
     assert(!kernel_consts(+abs_name));       // }- map functions must have new names (as constants)
     assert(!kernel_consts(+rep_name));       // }
-    kernel_consts(+abs_name) = ty_abs;
-    kernel_consts(+rep_name) = ty_rep;
-
     Term abs = tmCnst(abs_name, ty_abs);
     Term rep = tmCnst(rep_name, ty_rep);
+    kernel_consts(+abs_name) = Def{abs_name, abs};
+    kernel_consts(+rep_name) = Def{rep_name, rep};
+
     Term a = tmVar(Var("a"), ty_new);
     Term r = tmVar(Var("r"), ty_old);
 
@@ -435,7 +410,9 @@ Thm kernel_New_TDef(TCon tc_name, Cnst abs_name, Cnst rep_name, Thm th)
     Term ret2 = makeEqTerm(tmComb(P, r), makeEqTerm(tmComb(rep, tmComb(abs, r)), r));
 
     Term iand = tmCnst(cnst_iand, type_booleq);
-    return Thm(tmComb(tmComb(iand, ret1), ret2));
+    Thm  ret = Thm(tmComb(tmComb(iand, ret1), ret2));
+    kernel_typecons(+tc_name) = TDef{arity, tc_name, abs_name, rep_name, th_wit, ret};
+    return ret;
 }
 
 
@@ -471,7 +448,7 @@ Term kernel_Inst_Cnst(Cnst c, Vec<TSubst>& subs)
 {
     ZZ_PTimer_Scope(kernel_Inst_Cnst);
     assert(+c < kernel_consts.size());
-    return tmCnst(c, kernel_consts[+c]).typeSubst(subs);
+    return tmCnst(c, kernel_consts[+c].def.type()).typeSubst(subs);
 }
 
 
@@ -484,7 +461,7 @@ Term kernel_Inst_Cnst(Cnst c, Vec<TSubst>& subs)
 Type kernel_Inst_Type(TCon tc, List<Type> ts)
 {
     assert(+tc < kernel_typecons.size());
-    assert(kernel_typecons[+tc] == size(ts));
+    assert(kernel_typecons[+tc].arity == size(ts));
     return Type(tc, ts);
 }
 
@@ -502,7 +479,7 @@ Term mkAbs (Term x, Term tm)       { return tmAbs (x, tm);           }
 
 Term mkCnst(Cnst c, Type ty) {
     Vec<TSubst> subs;
-    bool ok = typeMatch(getType(c), ty, subs); assert(ok);
+    bool ok = typeMatch(getDef(c).def.type(), ty, subs); assert(ok);
     Term ret = kernel_Inst_Cnst(c, subs); assert(ret.type() == ty);
     return ret; }
 

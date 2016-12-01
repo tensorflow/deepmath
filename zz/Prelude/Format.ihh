@@ -461,7 +461,7 @@ macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0
 
 
 template<class STR, class T>
-void join(STR sep, const Vec<T>& fields, Out& out = std_out)
+void joiner(STR sep, const Vec<T>& fields, Out& out = std_out)
 {
     if (fields.size() == 0)
         return;
@@ -472,6 +472,22 @@ void join(STR sep, const Vec<T>& fields, Out& out = std_out)
         write_(out, fields[i]);
     }
 }
+
+
+template<class STR, class T>
+struct Join {
+    STR    const& sep;
+    Vec<T> const& elems;
+    Join(STR const& sep, Vec<T> const& elems) : sep(sep), elems(elems) {}
+};
+
+
+template<class STR, class T>
+inline Join<STR,T> join(STR const& sep, Vec<T> const& elems){
+    return Join<STR,T>(sep, elems); }
+
+template<class STR, class T> macro void write_(Out& out, const Join<STR,T>& v) {
+    joiner(v.sep, v.elems, out); }
 
 
 //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

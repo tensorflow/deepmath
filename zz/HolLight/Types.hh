@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__Types_hh
 #define ZZ__HolLight__Types_hh
 
-#include "Hashing.hh"
-#include "List.hh"
+#include "zz/HolLight/Hashing.hh"
+#include "zz/HolLight/List.hh"
 
 namespace ZZ {
 using namespace std;
@@ -94,6 +94,8 @@ struct Type : Composite<TypeData> {
         // -- Example: for (List<Type> it = t.targs(); it; ++it) { <code with *it> }
 #endif
 };
+
+Make_IdBase_MkIndex(Type);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -223,6 +225,8 @@ struct TSubst {
     TSubst(Type a = Type(), Type ty = Type()) : a(a), ty(ty) {}
 };
 
+Make_IdBase_MkIndex(Term);
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Thm  = (hyps=Set<Term>, concl=Term)
@@ -246,6 +250,8 @@ struct Thm : Composite<ThmData> {
     Term       concl() const { return Term(me().data[1]); }
 #endif
 };
+
+Make_IdBase_MkIndex(Thm);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

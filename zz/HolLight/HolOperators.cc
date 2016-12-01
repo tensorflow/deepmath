@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
-#include "HolOperators.hh"
+#include ZZ_Prelude_hh
+#include "zz/HolLight/HolOperators.hh"
 
 namespace ZZ {
 using namespace std;

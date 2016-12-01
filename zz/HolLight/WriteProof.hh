@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ZZ__HolLight__PremiseViewer_hh
-#define ZZ__HolLight__PremiseViewer_hh
+#ifndef ZZ__HolLight__WriteProof_hh
+#define ZZ__HolLight__WriteProof_hh
 
-#include "zz/Console/Console.hh"
+#include "zz/HolLight/ProofStore.hh"
 
 namespace ZZ {
 using namespace std;
@@ -25,10 +25,8 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-void viewProof(String filename, String theorem = "");
-
-void navigate(ConEvent ev, uind view_size, uint& page_rows, uind& top, uind& cursor, bool& moved_cursor, uint no_cursor_extra_rows, uint top_margin);
-    // -- temporary helper function shared with detailed viewer.
+void writeProof(String input_file, String output_file);
+void writeProof(ProofStore& P, Vec<Pair<Thm,Str>> const& named_thms, String output_file);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

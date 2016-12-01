@@ -1,6 +1,0 @@
-module_pfx    = ZZ_         # internal modules are prefixed with this string
-output_subdir = out         # intermediate files are stored here (object files etc.)
-conf_file     = MODULE.conf # contains configuration for the build of a module
-module_header = MODULE.hh   # optional header file that exports the collective API of the module
-prelude_mod   = ZZ_Prelude  # this module is always included (set to 'None' to disable this)
-pseudo_root   = ZZ          # a symlink, visible for #include:s, with this name will point to the root directory

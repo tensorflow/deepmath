@@ -4,26 +4,26 @@
 //| Author(s)   : Niklas Een
 //| Module      : Generics
 //| Description : Sets of integer-like types.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
 //| struct MyKey2Index {
 //|     typedef ... Key;
-//| 
+//|
 //|     uind operator()(const Key& x) const { return ...; }
 //|         // -- This operator HAS to be defined for a 'MkIndex' template paramter.
-//| 
+//|
 //|     Key inv(uind i) const { return ...); }
 //|         // -- This "inverse" function MAY be defined.
-//| }        
+//| }
 //|________________________________________________________________________________________________
 
 
 #ifndef ZZ__Generics__IntSet_h
 #define ZZ__Generics__IntSet_h
 
-#include "IntMap.hh"
+#include "zz/Generics/IntMap.hh"
 
 namespace ZZ {
 using namespace std;

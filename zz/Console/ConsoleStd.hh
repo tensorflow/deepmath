@@ -1,7 +1,7 @@
 #ifndef ZZ__Console__ConsoleStd_hh
 #define ZZ__Console__ConsoleStd_hh
 
-#include "Console.hh"
+#include "zz/Console/Console.hh"
 
 namespace ZZ {
 using namespace std;

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Prelude.hh"
-#include "ParserTypes.hh"
+#include ZZ_Prelude_hh
+#include "zz/HolLight/ParserTypes.hh"
 
 namespace ZZ {
 using namespace std;
@@ -61,6 +61,9 @@ cchar* ArgKind_name[ArgKind_size] = {
     "TYPE",
     "TERM",
     "THM",
+    "TYPE_IDX",
+    "TERM_IDX",
+    "THM_IDX",
 };
 
 

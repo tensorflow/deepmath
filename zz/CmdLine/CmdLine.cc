@@ -4,15 +4,15 @@
 //| Author(s)   : Niklas Een
 //| Module      : CmdLine
 //| Description : Command line parsing.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
 //| Documentation can be found in CmdLine_README.txt
 //|________________________________________________________________________________________________
 
-#include "Prelude.hh"
-#include "CmdLine.hh"
+#include ZZ_Prelude_hh
+#include "zz/CmdLine/CmdLine.hh"
 
 
 namespace ZZ {
@@ -38,11 +38,11 @@ ZZ_Finalizer(cli_clear, -10050) {
 }
 
 
-#include "CmdLine_UnivType.icc"
-#include "CmdLine_Parse.icc"
-#include "CmdLine_Match.icc"
-#include "CmdLine_Debug.icc"
-#include "CmdLine_CLI.icc"
+#include "zz/CmdLine/CmdLine_UnivType.icc"
+#include "zz/CmdLine/CmdLine_Parse.icc"
+#include "zz/CmdLine/CmdLine_Match.icc"
+#include "zz/CmdLine/CmdLine_Debug.icc"
+#include "zz/CmdLine/CmdLine_CLI.icc"
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

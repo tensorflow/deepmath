@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__ProofStore_hh
 #define ZZ__HolLight__ProofStore_hh
 
-#include "ZZ/Generics/IntSet.hh"
-#include "ParserTypes.hh"
+#include "zz/Generics/IntSet.hh"
+#include "zz/HolLight/ParserTypes.hh"
 
 namespace ZZ {
 using namespace std;
@@ -119,6 +119,8 @@ public:
     IntMap<ty_t, line_t>    ty_idx2line;    // }
     IntMap<tm_t, line_t>    tm_idx2line;    // }- reverse maps for 'line2idx'
     IntMap<th_t, line_t>    th_idx2line;    // }
+
+    IntMap<Thm, line_t>  thm2line;          // -- for theorems, we may need to get at the rule that produced them (not so for types and terms)
 
   //________________________________________
   //  Public member functions:

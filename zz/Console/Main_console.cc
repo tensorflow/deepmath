@@ -1,5 +1,5 @@
-#include "Prelude.hh"
-#include "ConsoleStd.hh"
+#include ZZ_Prelude_hh
+#include "zz/Console/ConsoleStd.hh"
 
 using namespace ZZ;
 

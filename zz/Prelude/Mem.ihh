@@ -4,32 +4,32 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Memory allocation primitives.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| The "xmalloc" family replaces regular 'malloc()'; the only difference is no need to handle
 //| NULL pointer returns (either throws an exception or aborts program depending on
 //| 'ZZ_NO_EXCEPTIONS').
-//| 
+//|
 //| The "ymalloc" family has less overhead and don't store size of allocation block (has to be
 //| passed back to 'yfree()'. Used for examle by ZZ's 'Vec<T>' class.
-//| 
+//|
 //| There are also three allocation strategies encapsulated in the following classes:
-//| 
+//|
 //|   UniAlloc   -- Allocates object of uniform size. Supports freeing of individual elements (get
 //|                 recycled through free-lists).
-//| 
+//|
 //|   StackAlloc -- Allocates object of any size in a stack-like fasion (allocates a big chunk of
-//|                 memory; allocation just increases the stack pointer). Can only free all 
+//|                 memory; allocation just increases the stack pointer). Can only free all
 //|                 elements simultaneously.
-//| 
+//|
 //|   SlimAlloc  -- A mix of the two above strategies. Made more efficient than regular 'malloc()'
-//|                 by requiring size of object to be given to 'free()'. 'ymalloc()' uses an 
-//|                 instance of this class, but separate instances for separate data can give 
+//|                 by requiring size of object to be given to 'free()'. 'ymalloc()' uses an
+//|                 instance of this class, but separate instances for separate data can give
 //|                 better memory locality (or be more efficient in a multi-threaded program).
-//| 
+//|
 //|________________________________________________________________________________________________
 
 namespace ZZ {
@@ -74,9 +74,9 @@ template<class T> macro void xfree(T* ptr) {
 // Allocation Strategies:
 
 
-#include "Mem_StackAlloc.ihh"
-#include "Mem_UniAlloc.ihh"
-#include "Mem_SlimAlloc.ihh"
+#include "zz/Prelude/Mem_StackAlloc.ihh"
+#include "zz/Prelude/Mem_UniAlloc.ihh"
+#include "zz/Prelude/Mem_SlimAlloc.ihh"
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -127,7 +127,7 @@ macro bool ymemInShutDown() { return ymalloc_mempool == NULL; }
 #endif
 
 
-// Wrapper class for meta-programming:  
+// Wrapper class for meta-programming:
 template<class T>
 struct YAllocator {
 //    T* alloc(size_t n) { return (T*)ymalloc(sizeof(T) * n); }

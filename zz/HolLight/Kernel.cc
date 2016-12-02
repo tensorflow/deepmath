@@ -15,7 +15,7 @@ limitations under the License.
 
 #include ZZ_Prelude_hh
 #include "zz/HolLight/Kernel.hh"
-#include "Printing.hh"  // -- for debugging
+#include "zz/HolLight/Printing.hh"  // -- for debugging
 
 namespace ZZ {
 using namespace std;

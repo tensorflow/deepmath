@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>           // -- for 'unique_ptr'
 
 #include "zz/HolLight/HolOperators.hh"
-#include "Printing.hh"      // -- for printing types in 'simpleFmtTerm()'.
+#include "zz/HolLight/Printing.hh"      // -- for printing types in 'simpleFmtTerm()'.
 
 #define TRANSLATE_EQ_TO_EQUIV
 

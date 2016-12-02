@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["permissive"])  # MIT/X11
+
 cc_library(
     name = "Console",
     srcs = glob(["*.cc"]),

@@ -1,6 +1,8 @@
 #ifndef ZZ__Generics__CuckooSet_hh
 #define ZZ__Generics__CuckooSet_hh
+#include ZZ_Prelude_hh
 namespace ZZ {
+using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

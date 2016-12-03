@@ -3,7 +3,9 @@
 
 #include <sys/mman.h>
 
+#include ZZ_Prelude_hh
 namespace ZZ {
+using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

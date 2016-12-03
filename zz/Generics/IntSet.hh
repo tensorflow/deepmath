@@ -25,7 +25,9 @@
 
 #include "zz/Generics/IntMap.hh"
 
+#include ZZ_Prelude_hh
 namespace ZZ {
+using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

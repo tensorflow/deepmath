@@ -9,5 +9,6 @@ cc_library(
         "*.hh",
         "*.icc",
     ]),
+    copts = ["-fexceptions"],
     deps = ["//zz/Prelude"],
 )

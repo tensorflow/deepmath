@@ -6,6 +6,7 @@ cc_library(
     name = "HolLight",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh"]),
+    copts = ["-fexceptions"],
     deps = [
         "//zz/CmdLine",
         "//zz/Console",
@@ -17,5 +18,10 @@ cc_library(
 cc_binary(
     name = "pan",
     srcs = ["Main_pan.cc"],
-    deps = ["HolLight"],
+    copts = ["-fexceptions"],
+    deps = [
+        "HolLight",
+        "//zz/CmdLine",
+        "//zz/Prelude",
+    ],
 )

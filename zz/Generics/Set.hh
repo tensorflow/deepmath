@@ -21,7 +21,6 @@
 #ifndef ZZ__Generics__Set_h
 #define ZZ__Generics__Set_h
 namespace ZZ {
-using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

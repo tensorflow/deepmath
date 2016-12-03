@@ -15,7 +15,6 @@
 #ifndef ZZ__Generics__IntMap_h
 #define ZZ__Generics__IntMap_h
 namespace ZZ {
-using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

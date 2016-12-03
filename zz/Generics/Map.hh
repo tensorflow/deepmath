@@ -23,7 +23,6 @@
 #ifndef ZZ__Generics__Map_h
 #define ZZ__Generics__Map_h
 namespace ZZ {
-using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

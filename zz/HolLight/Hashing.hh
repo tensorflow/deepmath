@@ -20,6 +20,7 @@ limitations under the License.
 #include "zz/Generics/Set.hh"
 #include "zz/Generics/CuckooSet.hh"
 
+#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

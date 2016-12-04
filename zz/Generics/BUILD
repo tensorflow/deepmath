@@ -6,5 +6,6 @@ cc_library(
     name = "Generics",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.hh"]),
+    copts = ["-fexceptions"],
     deps = ["//zz/Prelude"],
 )

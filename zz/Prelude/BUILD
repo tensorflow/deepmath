@@ -10,6 +10,7 @@ cc_library(
         "*.ihh",
         "*.icc",
     ]),
+    copts = ["-fexceptions"],
     defines = [
         "__BAZEL_BUILD__",
         "ZZ_Prelude_hh=\\\"zz/Prelude/Prelude.hh\\\"",
@@ -23,5 +24,6 @@ cc_library(
 cc_binary(
     name = "prelude_test",
     srcs = ["Main_prelude_test.cc"],
+    copts = ["-fexceptions"],
     deps = ["Prelude"],
 )

@@ -74,7 +74,9 @@
 
 #ifndef ZZ__Generics__Sort_h
 #define ZZ__Generics__Sort_h
+#include ZZ_Prelude_hh
 namespace ZZ {
+using namespace std;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

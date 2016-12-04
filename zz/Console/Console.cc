@@ -228,7 +228,7 @@ ConEvent con_getEvent(double timeout, bool interpreted)
                     };
 
                     Vec<char> buf;
-                    do buf.push(getChar(0.0)); while (buf.last() != -1 && buf.last() != 27);
+                    do buf.push(getChar(0.0)); while (buf.last() != char(-1) && buf.last() != 27);
                     if (buf.last() == 27) putBackChar(27);
                     buf.pop();
 

@@ -62,11 +62,13 @@
 //| v and w:
 //|
 //|     sort        (v)
+//|     sort        (v, lt)
 //|     sort_reverse(v)
 //|     sort_byFirst(v, w)
 //|     sort_lexico (v, w)
 //|
 //|     sortUnique        (v)
+//|     sortUnique        (v, lt)
 //|     sortUnique_reverse(v)
 //|     sortUnique_byFirst(v, w)
 //|     sortUnique_lexico (v, w)
@@ -324,6 +326,9 @@ template<template<class> class V, class T> void sortUnique        (V<T>& v) { so
 template<template<class> class V, class T> void sortUnique_reverse(V<T>& v) { sobSortUnique(ordReverse(sob(v))); }
 template<template<class> class V, class T, template<class> class W, class S> void sortUnique_byFirst(V<T>& v, W<S>& w) { sobSortUnique(ordByFirst(sob(v), sob(w))); }
 template<template<class> class V, class T, template<class> class W, class S> void sortUnique_lexico (V<T>& v, W<S>& w) { sobSortUnique(ordLexico (sob(v), sob(w))); }
+
+template<template<class> class V, class T, class LT> void sort      (V<T>& v, LT lt) { sobSort      (sob(v, lt)); }
+template<template<class> class V, class T, class LT> void sortUnique(V<T>& v, LT lt) { sobSortUnique(sob(v, lt)); }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

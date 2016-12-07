@@ -566,13 +566,13 @@ TArgs inline void wrLn(Out& out, cchar* fmt, DArgs) { formattedWrite(out, fmt, F
 inline       void newLn(Out& out)                   { out += '\n'; }
 
 // Stdout, locking, flushing
-TArgs inline void wr  (cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out.flush(); }
-TArgs inline void wrLn(cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out += '\n'; std_out.flush(); }
-inline       void newLn()                { ZZ_Acquire_Lock(console); std_out += '\n'; std_out.flush(); }
+TArgs inline void wr  (cchar* fmt, DArgs) { ZZ_Scoped_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out.flush(); }
+TArgs inline void wrLn(cchar* fmt, DArgs) { ZZ_Scoped_Lock(console); formattedWrite(std_out, fmt, FArgs); std_out += '\n'; std_out.flush(); }
+inline       void newLn()                 { ZZ_Scoped_Lock(console); std_out += '\n'; std_out.flush(); }
 
 // Stderr, locking, flushing
-TArgs inline void shout  (cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err.flush(); }
-TArgs inline void shoutLn(cchar* fmt, DArgs) { ZZ_Acquire_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err += '\n'; std_err.flush(); }
+TArgs inline void shout  (cchar* fmt, DArgs) { ZZ_Scoped_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err.flush(); }
+TArgs inline void shoutLn(cchar* fmt, DArgs) { ZZ_Scoped_Lock(console); formattedWrite(std_err, fmt, FArgs); std_err += '\n'; std_err.flush(); }
 
 // Stdout, no-locking, flushing
 TArgs inline void wr_quick  (cchar* fmt, DArgs) { formattedWrite(std_out, fmt, FArgs); }

@@ -13,12 +13,11 @@ import os
 import json
 
 import keras
+import tensorflow as tf
 
 import data_utils
 import conditioned_classification_models
 import unconditioned_classification_models
-
-import tensorflow as tf
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('source_dir',

@@ -27,3 +27,8 @@ cc_binary(
     copts = ["-fexceptions"],
     deps = ["Prelude"],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)

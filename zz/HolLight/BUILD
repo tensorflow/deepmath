@@ -25,3 +25,8 @@ cc_binary(
         "//zz/Prelude",
     ],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)

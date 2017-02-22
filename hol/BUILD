@@ -32,3 +32,8 @@ cc_binary(
         "@org_tensorflow//tensorflow/core:lib",
     ],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)

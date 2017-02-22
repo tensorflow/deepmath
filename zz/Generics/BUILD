@@ -9,3 +9,8 @@ cc_library(
     copts = ["-fexceptions"],
     deps = ["//zz/Prelude"],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)

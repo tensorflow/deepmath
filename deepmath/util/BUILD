@@ -25,3 +25,19 @@ py_test(
         "@org_tensorflow//third_party/py/numpy",
     ],
 )
+
+py_library(
+    name = "dfile",
+    srcs = ["dfile.py"],
+    deps = [
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "dfile_test",
+    srcs = ["dfile_test.py"],
+    deps = [
+        ":dfile",
+    ],
+)

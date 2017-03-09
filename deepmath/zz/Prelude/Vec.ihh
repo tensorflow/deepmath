@@ -1,0 +1,266 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : Vec.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Dynamic vector class. This is the most used class in 'ZZ'...
+//|
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| Properties:
+//|
+//|   - Uses special allocation scheme for small vectors (through 'ymalloc()') which reduces
+//|     memory foot-print and improves performance.
+//|
+//|   - BE CAREFUL with using 'Vec' as a global variable. Destructors for elements may or may
+//|     not be called (due to allocation scheme).
+//|
+//|   - Unless 'ZZ_BIG_MODE' is defined, all sizes and indices are 32-bit for efficiency
+//|     (so you cannot have more than 4 billion elements in the vector).
+//|
+//|   - 'realloc()' is used to move data, NOT copy constructor followed by destructor. You cannot
+//|     use this vector for objects that rely on their position in memory.
+//|
+//|   - The vector never shrinks implicitly. You have to call 'trim()' or 'trimTo()'. This
+//|     allows for a safe 'pushQ()' method (which assumes enough space is allocated for the push).
+//|     Just make sure to call 'reserve()' first.
+//|
+//|   - Parenthesis operator '()' works just like '[]' but will also grow the vector if your
+//|     index is outside it's current size. An optional second parameter gives the pad element.
+//|
+//|   - The class is non-copyable (so no accidental missing '&' in formal arguments). You have
+//|     to use explicit 'copyTo()' or 'moveTo()'.
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+#if defined(ZZ_USE_STL)
+#include "deepmath/zz/Prelude/Vec_stl.ihh"
+#else
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+template<class T>
+class Vec_data {        // -- Base class with all member variables (can be put into a union; no constructors).
+protected:              // We guarantee that 'sizeof(Vec<T>)' is constant for all 'T's.
+    T*   data;          // (All the anoying 'this->' is because of this trick, but we need it.)
+    uind sz;
+    uind cap;
+};
+
+
+template<class T>
+class Vec : public Vec_data<T>, public NonCopyable {
+protected:
+    void reserveQ(uind min_cap);    // -- reserve space for at least 'min_cap' elements, assuming it is necessary
+    void zero() { this->data = NULL; this->sz = 0; this->cap = 0; }
+
+public:
+    typedef T Elem;
+
+  //________________________________________
+  //  Constructors:
+
+    Vec()                          { zero(); }
+    Vec(uind size)                 { zero(); growTo(size); }
+    Vec(uind size, const T& pad)   { zero(); growTo(size, pad); }
+    Vec(Tag_copy, T* v, uind size) { zero(); reserve(size); for (uind i = 0; i < size; i++) new (&this->data[i]) T(v[i]); this->sz = size; }
+    template<class V>
+    Vec(Tag_copy, const V& v)      { zero(); reserve(v.size()); for (uind i = 0; i < v.size(); i++) new (&this->data[i]) T(v[i]); this->sz = v.size(); }
+    Vec(Tag_reserve, uind size)    { zero(); reserve(size); }
+   ~Vec()                          { clear(true); }
+
+  #if (__cplusplus >= 201103L)
+    Vec(const initializer_list<T>& elems) {
+        zero();
+        growTo(elems.size());
+        uind i = 0;
+        for (const auto& x: elems){
+            cpy(x, this->data[i]);
+            i++; }
+    }
+
+    Vec(Vec<T>&& other) { memcpy(this, &other, sizeof(*this)); other.zero(); }
+    Vec<T>& operator=(Vec<T>&& other) { other.moveTo(*this); return *this; }
+  #endif
+
+  //________________________________________
+  //  Allocation control:
+
+    void     reserve(uind min_cap) { if (min_cap > this->cap) reserveQ(min_cap); } // -- make sure we have at least this much capactiy
+    void     trim   ()             { trimTo(this->sz); }    // -- shrink allocated memory down to current size ("finalize" vector)
+    void     trimTo (uind max_cap);                         // -- shrink allocated memory (but never below current vector size 'sz')
+
+  //________________________________________
+  //  Underlying array:
+
+    const T*       base    () const                     { return this->data; }
+    T*             base    ()                           { return this->data; }
+    Array<T>       release ()                           { T* ret = this->data; uind sz = this->sz; this->data = NULL; this->sz = 0; this->cap = 0; return Array<T>(ret, sz); }
+    Array<const T> slice   (uind start = 0)       const { return ::ZZ::slice(this->data[start], this->data[this->sz]); }
+    Array<const T> slice   (uind start, uind end) const { return ::ZZ::slice(this->data[start], this->data[end]); }
+    Array<T>       slice   (uind start = 0)             { return ::ZZ::slice(this->data[start], this->data[this->sz]); }
+    Array<T>       slice   (uind start, uind end)       { return ::ZZ::slice(this->data[start], this->data[end]); }
+    uind           capacity() const                     { return this->cap; }
+
+  //________________________________________
+  //  Size operations:
+
+    uind     size    () const    { return this->sz; }
+    void     pop     ()          { assert_debug(this->sz > 0); this->sz--, this->data[this->sz].~T(); }
+    T        popC    ()          { T ret = this->data[this->sz-1]; pop(); return ret; }
+    void     shrinkTo(uind size) { while (this->sz > size) pop(); } // -- will do nothing if given size > current size
+    void     growTo  (uind size);                                   // -- will do nothing if given size < current size
+    void     growTo  (uind size, const T& pad);
+    void     setSize (uind size)               { if (size <= this->sz) shrinkTo(size); else growTo(size); }
+    void     setSize (uind size, const T& pad) { if (size <= this->sz) shrinkTo(size); else growTo(size, pad); }
+    void     clear   (bool dealloc = false);
+    void     reset   (uind size)               { clear(); growTo(size); }
+    void     reset   (uind size, const T& pad) { clear(); growTo(size, pad); }
+
+  //________________________________________
+  //  Stack interface:
+
+    void     push  ()                 { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T      ; this->sz++; }
+    void     push  (const T& elem)    { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T(elem); this->sz++; }
+    void     pushQ (const T& elem)    { assert_debug(this->sz < this->cap); new (&this->data[this->sz]) T(elem); this->sz++; } // -- "quick" push: assumes there is enough memory reserved
+    const T& last  (uind i = 0) const { return this->data[this->sz-i-1]; }
+    T&       last  (uind i = 0)       { return this->data[this->sz-i-1]; }
+    const T& peek  (uind i = 0) const { return last(i); }   // -- alternative name
+    T&       peek  (uind i = 0)       { return last(i); }
+    const T& end_  (uind i = 0) const { return this->data[this->sz-i]; }
+    T&       end_  (uind i = 0)       { return this->data[this->sz-i]; }
+
+  #if (__cplusplus >= 201103L)
+    const T* end   (uind i = 0) const { return &this->data[this->sz-i]; }
+    T*       end   (uind i = 0)       { return &this->data[this->sz-i]; }
+    const T* begin () const           { return &this->data[0]; }
+    T*       begin ()                 { return &this->data[0]; }
+
+    void     push  (T&& elem)         { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T(move(elem)); this->sz++; }
+  #endif
+
+  //________________________________________
+  //  Indexing:
+
+    const T& operator[](uind i) const         { assert_debug(i <= this->sz); return this->data[i]; } // -- allow for addressing one element beyond the last
+    T&       operator[](uind i)               { assert_debug(i <= this->sz); return this->data[i]; }
+    const T& get       (uind i) const         { assert_debug(i <= this->sz); return this->data[i]; } // -- synonym for 'operator[]' (convenient if you have a pointer to a 'Vec')
+    T&       get       (uind i)               { assert_debug(i <= this->sz); return this->data[i]; }
+    T&       operator()(uind i)               { growTo(i+1);      return this->data[i]; } // -- like operator [], but grow Vector if needed
+    T&       operator()(uind i, const T& pad) { growTo(i+1, pad); return this->data[i]; }
+    const T& operator[](ReverseIndex r) const { uind i = this->sz - r.off; assert_debug(i <= this->sz); return this->data[i]; }
+    T&       operator[](ReverseIndex r)       { uind i = this->sz - r.off; assert_debug(i <= this->sz); return this->data[i]; }
+
+  //________________________________________
+  //  Copying/moving:
+
+    void copyTo(Vec<T>& dst) const;
+    void moveTo(Vec<T>& dst);
+
+  //________________________________________
+  //  Low-level:
+
+    void revive(uind size) { assert_debug(size <= this->cap); this->sz = size; }    // -- for PODs only!
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Implementation:
+
+
+template<class T>
+void  Vec<T>::trimTo(uind max_cap)
+{
+    newMax(max_cap, this->sz);    // -- don't shrink beyond 'sz'.
+    if (max_cap < this->cap){     // -- we only shrink the capcity, if it is already smaller, do nothing
+        this->data = yrealloc(this->data, this->cap, max_cap);
+        this->cap = max_cap;
+    }
+}
+
+
+template<class T>
+void Vec<T>::reserveQ(uind min_cap)
+{
+    size_t new_cap = max_((this->cap + (this->cap >> 2) + 2) & ~1, (min_cap+1) & ~1);
+    this->data = yrealloc(this->data, this->cap, new_cap);
+    this->cap = new_cap;
+}
+
+
+template<class T>
+inline void Vec<T>::growTo(uind size, const T& pad)
+{
+    if (this->sz < size){
+        reserve(size);
+        for (uind i = this->sz; i < size; i++) new (&this->data[i]) T(pad);
+        this->sz = size;
+    }
+}
+
+
+template<class T>
+inline void Vec<T>::growTo(uind size)
+{
+    if (this->sz < size){
+        reserve(size);
+        for (uind i = this->sz; i < size; i++) new (&this->data[i]) T;
+        this->sz = size;
+    }
+}
+
+
+template<class T>
+void Vec<T>::clear(bool dealloc)
+{
+    if ((uintp)this != 0 && this->cap > 0 && !ymemInShutDown()){
+        assert(this->data != NULL);
+        for (uind i = 0; i < this->sz; i++) this->data[i].~T();
+        this->sz = 0;
+        if (dealloc) yfree(this->data, this->cap), this->data = NULL, this->cap = 0;
+    }
+}
+
+
+template<class T>
+inline void Vec<T>::copyTo(Vec<T>& copy) const
+{
+    if (&copy == this) return;
+    if (copy.cap > 2*this->sz){
+        copy.clear(true);
+        copy.growTo(this->sz);
+    }else
+        copy.setSize(this->sz);
+
+    for (uind i = 0; i < this->sz; i++)
+        cpy(this->data[i], copy.data[i]);
+}
+
+
+template<class T>
+inline void Vec<T>::moveTo(Vec<T>& dest)
+{
+    if (&dest == this) return;
+    dest.clear(true);
+    dest.data = this->data; dest.sz = this->sz; dest.cap = this->cap;
+    zero();
+}
+
+
+#endif
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Conversion to array:
+
+
+template <class T> macro Array<T>       slice(Vec<T>&       v) { return v.slice(); }
+template <class T> macro Array<const T> slice(const Vec<T>& v) { return v.slice(); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

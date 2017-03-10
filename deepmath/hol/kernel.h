@@ -35,7 +35,7 @@ typedef std::shared_ptr<const Type> TypePtr;
 typedef std::shared_ptr<const Term> TermPtr;
 typedef std::shared_ptr<const Thm> ThmPtr;
 
-// TODO(cezaryk) make a Symbol class which uses fast pointer comparison
+// TODO(geoffreyi) make a Symbol class which uses fast pointer comparison
 typedef std::string TypeVar;
 typedef uint64_t TypeCon;
 typedef std::string TermVar;

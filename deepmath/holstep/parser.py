@@ -24,6 +24,15 @@ import sys
 
 # Our tokens are either parentheses, commas, or anything else sans whitespace.
 _TOKEN_RE = re.compile(r'[(),]|[^\s(),]+')
+_BINDER_RE = re.compile(r"^([!?\\@]|\?!|lambda)([a-zA-Z0-9_%'<>]+)\.$")
+_BINDERS = {'\\', '?!', '?', '!', '@'}
+_OPERATORS = {'IN', 'SUBSET', '>', '<', '=', '..', '-', '+', '*', '==',
+              '<=', '==>', '>=', 'MOD', '$', '|-', 'UNION', '\\/', ',',
+              'INSERT', 'INTER', 'DIFF', 'PCROSS', 'DELETE', 'HAS_SIZE',
+              'EXP', 'PSUBSET', 'DIV', 'CROSS', 'o', '=_c', '<=_c', 'treal_eq',
+              '<_c', 'treal_le', 'treal_mul', 'treal_add', '/\\', '>=_c',
+             }
+_BINDERS_AND_OPERATORS = _BINDERS | _OPERATORS
 
 
 def _finalize(t):
@@ -31,11 +40,23 @@ def _finalize(t):
   if len(t) == 3:
     # Fix operators to go in the front.
     assert isinstance(t[1], str)  # Operators are never calls
+    assert t[1] in _OPERATORS
     t = t[1], t[0], t[2]
   elif len(t) == 2:
     # Flatten currying
     if isinstance(t[0], tuple):
-      t = t[0] + t[1:]
+      # Don't uncurry binders or operators
+      if t[0][0] not in _BINDERS_AND_OPERATORS:
+        t = t[0] + t[1:]
+    # Split out the variables for the quantifiers.
+    else:
+      match = _BINDER_RE.match(t[0])
+      if match:
+        binder = match.group(1)
+        if binder == 'lambda':
+          binder = '\\'
+        variable = match.group(2)
+        t = (binder, variable, t[1])
   elif len(t) > 3 and t[-2] == '|-':
     # Handle turnstiles with more than one comma separated assumption
     assert t[1:-2:2] == (',',) * ((len(t) - 3) // 2)

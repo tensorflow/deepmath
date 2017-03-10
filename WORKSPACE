@@ -5,6 +5,11 @@ local_repository(
   path = "tensorflow",
 )
 
+local_repository(
+  name = "org_fold",
+  path = "fold",
+)
+
 # Borrowed from TensorFlow Serving.
 # TODO(geoffreyi): Remove once TensorFlow handles this internally.
 # TensorFlow depends on "io_bazel_rules_closure" so we need this here.

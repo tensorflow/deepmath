@@ -43,6 +43,16 @@ class ParserTest(tf.test.TestCase):
     self._check('a |- x', '(|- a x)')
     self._check('a, b |- x', '(|- a b x)')
     self._check('a , b |- x', '(|- a b x)')
+    self._check(r'\x. (x + y)', r'(\ x (+ x y))')
+    self._check('!x. (x = 0)', '(! x (= x 0))')
+    self._check('?x. (x = 0)', '(? x (= x 0))')
+    self._check('?!x. (x = 0)', '(?! x (= x 0))')
+    self._check(r'(\x. x) y', r'((\ x x) y)')
+    self._check('(lambdax. x) y', r'((\ x x) y)')
+    self._check('(@x. x) y', '((@ x x) y)')
+    self._check(r'(\GEN%PVAR%2364. GEN%PVAR%2364) y',
+                r'((\ GEN%PVAR%2364 GEN%PVAR%2364) y)')
+    self._check(r'(\x. x) ((f y) x)', r'((\ x x) (f y x))')
 
   def testInvalid(self):
     for s in '(a)', 'a b c d', 'a b c d e', 'a (b c d e)':

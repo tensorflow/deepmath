@@ -15,6 +15,12 @@ py_test(
     deps = ["@six_archive//:six"],
 )
 
+py_binary(
+    name = "gen_op_stub",
+    srcs = ["gen_op_stub.py"],
+    srcs_version = "PY2AND3",
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**/*"]),

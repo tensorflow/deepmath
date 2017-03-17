@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package deepmath;
+
+message FirstOrderLogicVariable {
+  string name = 1;
+}
+
+message FirstOrderLogicTerm {
+  message Number {
+    string value = 1;
+  }
+
+  message Function {
+    string name = 1;
+    repeated FirstOrderLogicTerm args = 2;
+  }
+
+  oneof term_type {
+    FirstOrderLogicVariable variable = 2;
+    Number number = 3;
+    Function function = 4;
+  }
+}
+
+
+message FirstOrderLogicFormula {
+  message Void { }
+
+  message Predicate {
+    string name = 1;
+    repeated FirstOrderLogicTerm args = 2;
+  }
+
+  message Equality {
+    FirstOrderLogicTerm left = 1;
+    FirstOrderLogicTerm right = 2;
+  }
+
+  message UnaryOp {
+    FirstOrderLogicFormula child = 1;
+  }
+
+  message BinaryOp {
+    FirstOrderLogicFormula left = 1;
+    FirstOrderLogicFormula right = 2;
+  }
+
+  message QuantifierOp {
+    repeated FirstOrderLogicVariable variables = 1;
+    FirstOrderLogicFormula child = 2;
+  }
+
+  oneof formula_type {
+    Void true_const = 1;
+    Void false_const = 2;
+    Predicate predicate = 3;
+    Equality equality = 4;
+    UnaryOp not_op = 5;
+    BinaryOp and_op = 6;
+    BinaryOp or_op = 7;
+    BinaryOp implies_op = 8;
+    BinaryOp iff_op = 9;
+    QuantifierOp universal_op = 10;
+    QuantifierOp existential_op = 11;
+  }
+}

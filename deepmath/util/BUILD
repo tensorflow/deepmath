@@ -45,3 +45,9 @@ py_test(
         ":dfile",
     ],
 )
+
+py_library(
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    srcs_version = "PY2AND3",
+)

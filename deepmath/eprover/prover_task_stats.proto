@@ -1,0 +1,58 @@
+syntax = "proto2";
+
+package deepmath;
+
+// Statistics for the use of a particular axiom
+message AxiomStat {
+  // Key of the axiom in the statement dictionary.
+  optional string axiom = 1;
+
+  // Ranks for all the conjectures below.
+  repeated int32 rank = 2;
+
+  // Must be the same length as the 'rank' list.
+  // Indices of the conjectures in the statement ordering.
+  repeated int32 conjecture_index = 3;
+}
+
+// Precursor for statistics for an axiom. It is used in the map-reduce
+// that produces the statistics, but should not be used externally.
+message AxiomPreStat {
+  // Index of the conjecture in the statement dictionary (ordering).
+  optional int32 conjecture_index = 1;
+
+  // Rank of the axiom for the conjecture above.
+  optional int32 rank = 2;
+}
+
+// A single proof generation task.
+message ConjectureStat {
+  // Key of the conjecture in the statement dictionary.
+  optional string conjecture = 1;
+
+  // Index of the conjecture in the statement ordering (for convenience).
+  optional int32 conjecture_index = 2;
+
+  // Ranks of all the true dependencies of this conjecture indexed
+  // by the list of conjectures in the conjecture ordering of the
+  // DataProvider.
+  repeated int32 ranks = 3;
+
+  // Sorted list of the axioms up until the last true positive.
+  repeated int32 axiom_indices = 4;
+}
+
+// Statistics about the usage/predicted premises of a statement.
+// A statement can have multiple
+message ProverTaskStat {
+  // If this is a pre-statistics, then it will be aggregated by
+  // the reducer. This field should not be used in general for any
+  // other purpose.
+  optional AxiomPreStat axiom_pre_stat = 1;
+
+  // Statistics of the use of this statement as a premise.
+  optional AxiomStat axiom_stat = 2;
+
+  // Statistics on the premises predicted for thist statement as conjecture.
+  optional ConjectureStat conjecture_stat = 3;
+}

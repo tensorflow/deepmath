@@ -32,7 +32,7 @@ class ModelUtilsTest(tf.test.TestCase):
     with self.test_session():
       x = np.random.randn(3, 5)
       for axis in 0, 1:
-        for size in xrange(7):
+        for size in range(7):
           y = model_utils.pad_up_to(x, size=size, axis=axis).eval()
           self.assertLessEqual(size, y.shape[axis])
           shape = list(y.shape)
@@ -45,7 +45,7 @@ class ModelUtilsTest(tf.test.TestCase):
     with self.test_session():
       size = 3
       for axis in 0, 1:
-        for start in xrange(7):
+        for start in range(7):
           x = np.random.randn(start, start)
           y = model_utils.pad_to_multiple(x, size=size, axis=axis).eval()
           self.assertAllEqual(x, y[:start, :start])
@@ -167,12 +167,12 @@ class ModelUtilsTest(tf.test.TestCase):
       return name
 
     # Make a loom with a bunch of ops, with names unrelated to the order
-    ops = {'op%d' % (i * 11 % n): make_op(i) for i in xrange(n)}
+    ops = {'op%d' % (i * 11 % n): make_op(i) for i in range(n)}
     loom.Loom(named_ops=ops)
 
     # Check that the variables were created in the right order
     self.assertItemsEqual(
-        [('name_%d/var%d' % (i, i)).replace('_0', '') for i in xrange(n)],
+        [('name_%d/var%d' % (i, i)).replace('_0', '') for i in range(n)],
         [v.op.name for v in tf.global_variables()])
 
   def testPairedJoint(self):

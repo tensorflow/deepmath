@@ -1,0 +1,24 @@
+strict digraph {
+  root_par [style=invis];
+  plus     [label="+"];
+  number_1 [label="number"];
+  minus    [label="-"];
+  number_2 [label="number"];
+  number_3 [label="number"];
+
+  root_par -> plus  [label="root"];
+  plus -> number_1  [label="a"];
+  number_1 -> 1     [label="b"];
+  1 -> number_1     [label="c"];
+  number_1 -> plus  [label="d"];
+  plus -> minus     [label="e"];
+  minus -> number_2 [label="f"];
+  number_2 -> 2     [label="g"];
+  2 -> number_2     [label="h"];
+  number_2 -> minus [label="i"];
+  minus -> number_3 [label="j"];
+  number_3 -> 3     [label="k"];
+  3 -> number_3     [label="l"];
+  number_3 -> minus [label="m"];
+  minus -> plus     [label="n"];
+}

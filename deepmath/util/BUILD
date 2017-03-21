@@ -11,9 +11,9 @@ py_library(
     srcs = ["model_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//third_party/py/numpy",
         "@org_fold//tensorflow_fold/public:loom",
         "@org_tensorflow//tensorflow:tensorflow_py",
-        "@org_tensorflow//third_party/py/numpy",
     ],
 )
 
@@ -23,8 +23,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":model_utils",
+        "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
-        "@org_tensorflow//third_party/py/numpy",
     ],
 )
 

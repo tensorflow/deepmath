@@ -26,8 +26,8 @@ py_test(
     deps = [
         ":train",
         "//deepmath/util:test_utils",
+        "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
-        "@org_tensorflow//third_party/py/numpy",
     ],
 )
 
@@ -107,8 +107,8 @@ py_library(
         ":gen_clause_ops",
         ":jagged",
         "//deepmath/util:dfile",
+        "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
-        "@org_tensorflow//third_party/py/numpy",
     ],
 )
 
@@ -126,8 +126,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_jagged_ops",
+        "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
-        "@org_tensorflow//third_party/py/numpy",
     ],
 )
 

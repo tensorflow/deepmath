@@ -11,6 +11,11 @@ load(
 
 licenses(["notice"])  # Apache 2.0
 
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)
+
 tf_proto_library(
     name = "protos",
     srcs = [

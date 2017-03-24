@@ -14,7 +14,9 @@
 # ==============================================================================
 """Jagged arrays."""
 
+from __future__ import absolute_import
 from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 from deepmath.guidance import gen_jagged_ops

@@ -112,6 +112,139 @@ py_library(
     ],
 )
 
+py_test(
+    name = "inputs_test",
+    srcs = ["inputs_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//deepmath/eprover:protos_py",
+        "//deepmath/guidance:inputs",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "driver_lib",
+    srcs = ["driver_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_models",
+        "//deepmath/guidance:inputs",
+        "//deepmath/guidance:jagged",
+        "//deepmath/guidance:train",
+        "//deepmath/util:model_utils",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "driver_test",
+    srcs = ["driver_test.py"],
+    data = [
+        "//deepmath/guidance/test_data:examples_eval",
+        "//deepmath/guidance/test_data:examples_train",
+        "//deepmath/guidance/test_data:vocabulary",
+    ],
+    shard_count = 14,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":driver_lib",
+        "//deepmath/eprover:protos_py",
+        "//deepmath/util:test_utils",
+        "//third_party/py/keras",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "driver",
+    srcs = ["driver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":driver_lib",
+    ],
+)
+
+py_library(
+    name = "clause_loom",
+    srcs = ["clause_loom.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gen_clause_ops",
+        "@org_fold//tensorflow_fold/public:loom",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "clause_loom_test",
+    srcs = ["clause_loom_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":clause_loom",
+        "//deepmath/eprover:protos_py",
+        "//deepmath/guidance:inputs",
+        "//deepmath/util:model_utils",
+        "//third_party/py/numpy",
+        "@org_fold//tensorflow_fold/public:loom",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "wavenet",
+    srcs = ["wavenet.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "all_models",
+    srcs = [
+        "all_models.py",
+        "cnn_unconditional.py",
+        "fast_cnn.py",
+        "model_cnn_regularized.py",
+        "model_wavenet.py",
+        "tree_rnn.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":clause_loom",
+        ":wavenet",
+        "//deepmath/guidance:inputs",
+        "//deepmath/guidance:jagged",
+        "//deepmath/premises:model",
+        "//deepmath/premises:model_definition_cnn_flat3",
+        "//deepmath/premises:model_final_cnn_3x_lstm",
+        "//deepmath/util:model_utils",
+        "//third_party/py/keras",
+        "@org_fold//tensorflow_fold/public:loom",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "all_models_test",
+    srcs = ["all_models_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_models",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "inference_graph",
+    srcs = ["inference_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":driver_lib",
+    ],
+)
+
 deepmath_op_library(
     name = "jagged_ops",
     srcs = ["jagged_ops.cc"],
@@ -138,4 +271,9 @@ py_test(
     deps = [
         ":jagged",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
 )

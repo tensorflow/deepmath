@@ -1,0 +1,7 @@
+fof(d9_trees_3, axiom, (! [A] :  ( (v1_relat_1(A) & v1_funct_1(A))  =>  (v4_trees_3(A) <=> v1_trees_3(k10_xtuple_0(A))) ) )).
+fof(fc6_finseq_1, axiom, (! [A] :  (v1_relat_1(k5_finseq_1(A)) & v1_funct_1(k5_finseq_1(A))) )).
+fof(fc7_finseq_1, axiom, (! [A] : v1_finseq_1(k5_finseq_1(A)))).
+fof(redefinition_k9_finseq_1, axiom, (! [A] : k9_finseq_1(A)=k5_finseq_1(A))).
+fof(t12_trees_3, axiom, (! [A] :  (v1_trees_3(k1_tarski(A)) <=>  ( ~ (v1_xboole_0(A))  & v1_trees_1(A)) ) )).
+fof(t39_finseq_1, axiom, (! [A] :  (! [B] :  ( (v1_relat_1(B) &  (v1_funct_1(B) & v1_finseq_1(B)) )  =>  (B=k9_finseq_1(A) <=>  (k3_finseq_1(B)=1 & k10_xtuple_0(B)=k1_tarski(A)) ) ) ) )).
+fof(t28_trees_3, conjecture, (! [A] :  (v4_trees_3(k9_finseq_1(A)) <=>  ( ~ (v1_xboole_0(A))  & v1_trees_1(A)) ) )).

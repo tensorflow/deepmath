@@ -51,3 +51,8 @@ py_library(
     srcs = ["test_utils.py"],
     srcs_version = "PY2AND3",
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**/*"]),
+)

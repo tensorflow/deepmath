@@ -14,14 +14,13 @@
 # ==============================================================================
 """Tests for util.model_utils."""
 
+from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-
 from tensorflow_fold.public import loom
-
 from deepmath.util import model_utils
 
 

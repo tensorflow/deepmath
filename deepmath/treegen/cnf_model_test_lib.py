@@ -38,9 +38,8 @@ def test_memorization(test_case,
                       model_class=cnf_model.CNFTreeModel,
                       extra_hparams=''):
   """Run model on expression(s) and see if it works."""
-  with tf.gfile.GFile(os.path.join(
-      os.environ['TEST_SRCDIR'],
-      'deepmath/deepmath/treegen/testdata/cnf_metadata.json')) as f:
+  with tf.gfile.GFile(
+      'deepmath/treegen/testdata/cnf_metadata.json') as f:
     clause_metadata = json.load(f)
 
   if not isinstance(expr, (list, tuple)):

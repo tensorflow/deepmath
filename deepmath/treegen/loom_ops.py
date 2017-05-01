@@ -493,7 +493,7 @@ class KLDivPosteriorPriorLoomOp(loom.LoomOp):
     # Force minimum stdev to be 1e-2, so that the KL divergence never blows up.
     stdev = tf.nn.softplus(mean_and_log_stdev[:, self.emb_size:]) + 1e-2
 
-    # TODO(ricshin): Switch to tf.contrib.distributions.kl when it has constant
+    # TODO(ricshin): Switch to tf.contrib.distributions.kl_divergence when it has constant
     # folding.
     kl_div = kl_div_gaussians(mean, stdev, 0, 1)
 

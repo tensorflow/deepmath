@@ -60,12 +60,12 @@ void Vocabulary::Initialize(tensorflow::StringPiece path) {
     TF_CHECK_OK(tensorflow::ReadFileToString(
         tensorflow::Env::Default(), path.ToString(), &all_vocab));
     for (const auto& raw_word : tensorflow::str_util::Split(all_vocab, '\n')) {
-      StringPiece word = raw_word;
+      tensorflow::StringPiece word = raw_word;
       tensorflow::str_util::RemoveWhitespaceContext(&word);
       if (word.empty()) continue;
       for (const auto c : word) {
         QCHECK(isalnum(c) || c == '_') << "Nonalphanumeric vocab word '"
-            << tensorflow::str_util::CEscape(word.ToString()) << " in " << path;
+            << tensorflow::str_util::CEscape(word) << " in " << path;
       }
       if (one_variable && is_variable(word)) {
         if (variable_id_ < 0) {

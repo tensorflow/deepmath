@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/Parser.hh"
-#include "deepmath/zz/Generics/LineReader.hh"
+#include "Parser.hh"
+#include "zz/Generics/LineReader.hh"
 
 
 namespace ZZ {

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/WriteProof.hh"
-#include "deepmath/zz/HolLight/Kernel.hh"
-/**/#include "Printing.hh"
+#include "WriteProof.hh"
+#include "Kernel.hh"
+#include "Printing.hh"
 
 namespace ZZ {
 using namespace std;
@@ -46,7 +46,7 @@ template<> fts_macro void write_(Out& out, NoTick const& v) {
 
 class WriteProof {
     String filename;
-    ProofStore& P;
+    ProofStore* P;
     Vec<Pair<Thm,Str>> const& named_thms;
     OutFile out;
 
@@ -66,7 +66,7 @@ class WriteProof {
 public:
     WriteProof(String filename, ProofStore& P, Vec<Pair<Thm,Str>> const& named_thms) :
         filename(filename),
-        P(P),
+        P(&P),
         named_thms(named_thms),
         out(filename)
     {
@@ -108,8 +108,6 @@ tm_t WriteProof::emit(Term tm)
             wrLn(out, "v%_ %_", NoTick(Str(tm.var())), type2idx[tm.type()]);
 
         }else if (tm.is_cnst()){
-            //**/if (!getDef(tm.cnst()).th) FWriteLn(out) "`` cnst: %_ (builtin)", tm.cnst();
-            //**/else FWriteLn(out) "`` cnst: %_ %_", tm.cnst(), getDef(tm.cnst()).th;
             emit(getDef(tm.cnst()).th);
             wrLn(out, "c%_ %_", tm.cnst(), type2idx[tm.type()]);
 
@@ -135,14 +133,14 @@ th_t WriteProof::emit(Thm th)
     if (!th) return 0;      // -- we can get here for builtin definitions (not backed up by any theorem)
 
     if (!thm2idx[th]){
-        line_t n = P.thm2line[th]; assert(P.ret(n) == arg_THM);
-        Array<Arg const> args = P.args(n);
+        line_t n = P->thm2line[th]; assert(P->ret(n) == arg_THM);
+        Array<Arg const> args = P->args(n);
 
-        auto type = [&](uint i){ return emit(P.evalType(args[i].id)); };
-        auto term = [&](uint i){ return emit(P.evalTerm(args[i].id)); };
-        auto thm  = [&](uint i){ return emit(P.evalThm (args[i].id)); };
+        auto type = [&](uint i){ return emit(P->evalType(args[i].id)); };
+        auto term = [&](uint i){ return emit(P->evalTerm(args[i].id)); };
+        auto thm  = [&](uint i){ return emit(P->evalThm (args[i].id)); };
 
-        switch (P.rule(n)){
+        switch (P->rule(n)){
         case rule_REFL    : wrLn(out, "R%_", term(0)); break;
         case rule_TRANS   : wrLn(out, "T%_ %_", thm(0), thm(1)); break;
         case rule_MK_COMB : wrLn(out, "C%_ %_", thm(0), thm(1)); break;

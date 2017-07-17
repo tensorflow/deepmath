@@ -23,9 +23,12 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-bool pp_full_internal = false;
-bool pp_use_ansi      = true;
-bool pp_show_types    = false;
+bool pp_full_internal    = false;
+bool pp_use_ansi         = true;
+bool pp_show_types       = false;
+bool pp_show_bound_types = true;
+bool pp_readable_eqs     = true;
+bool pp_readable_nums    = true;
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

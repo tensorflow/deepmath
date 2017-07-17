@@ -3,18 +3,18 @@
 //| Name        : Array.ihh
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
-//| Description : An 'Array<T>' is a 'T'-pointer plus an unsigned integer size. 
-//| 
+//| Description : An 'Array<T>' is a 'T'-pointer plus an unsigned integer size.
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| An array is just a pair '(data, size)' without much abstraction. It is meant to be a wrapper
 //| for regular C-arrays and slices of memory that couples the pointer with the size of the data it
-//| points to. You are allowed to modify the fields 'data' and 'sz' (size) directly. The null-array 
+//| points to. You are allowed to modify the fields 'data' and 'sz' (size) directly. The null-array
 //| is represented by having 'sz == -1'.
-//| 
-//| Note that a constant array can still have its elements changed. It's only the pointer and the 
+//|
+//| Note that a constant array can still have its elements changed. It's only the pointer and the
 //| size that is constant. If you want the element to be constant, use 'Array<const T>' (compare
 //| 'const char*' (pointer to a constant) vs. 'char *const' (constant pointe)).
 //|________________________________________________________________________________________________
@@ -57,7 +57,7 @@ struct Array {
   //________________________________________
   //  Constructors etc:
 
-    // Plain: 
+    // Plain:
     Array() : data(NULL), sz(UIND_MAX) {}
     Array(T* data_, uind sz_) : data(data_), sz(sz_) {}
     Array(T* data_, T* end_) : data(data_), sz(end_ - data_) {}
@@ -101,8 +101,13 @@ struct Array {
 
     T*       base() const { return data; }
 
-    Array<T> slice(uind start = 0)       const { return Array<T>(&data[start], sz - start); }
-    Array<T> slice(uind start, uind end) const { return Array<T>(&data[start], end - start); }
+    typedef ReverseIndex rind;
+    Array<T> slice(uind beg = 0)         const { return Array<T>(&data[beg], sz - beg); }
+    Array<T> slice(uind beg , uind end ) const { return Array<T>(&data[beg], end - beg); }
+    Array<T> slice(rind beg_)            const { uind beg = this->sz - beg_.off; return Array<T>(&data[beg], sz - beg); }
+    Array<T> slice(uind beg , rind end_) const { uind end = this->sz - end_.off; return Array<T>(&data[beg], end - beg); }
+    Array<T> slice(rind beg_, uind end ) const { uind beg = this->sz - beg_.off; return Array<T>(&data[beg], end - beg); }
+    Array<T> slice(rind beg_, rind end_) const { uind beg = this->sz - beg_.off; uind end = this->sz - end_.off; return Array<T>(&data[beg], end - beg); }
 
   #if (__cplusplus >= 201103L)
     const T* end   (uind i = 0) const { return &this->data[this->sz-i]; }

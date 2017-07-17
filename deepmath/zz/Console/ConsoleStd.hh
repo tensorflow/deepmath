@@ -1,9 +1,8 @@
 #ifndef ZZ__Console__ConsoleStd_hh
 #define ZZ__Console__ConsoleStd_hh
 
-#include "deepmath/zz/Console/Console.hh"
+#include "Console.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -26,6 +25,7 @@ inline Attr  darkenFg(Attr attr) { attr.fg = darken(attr.fg); return attr; }
 // Note on coordinates: '~y == con_rows() - y', '~x == con_cols() - x'
 
 void putAt(uint y, uint x, AChar c);
+AChar getAt(uint y, uint x);
 void printAt(uint y, uint x, String const& text, Attr attr);
 void printAt(uint y, uint x, Array<AChar const> text);
 inline void printAt(uint y, uint x, Vec<AChar> const& text) { printAt(y, x, text.slice()); }

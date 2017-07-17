@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__ParserTypes_hh
 #define ZZ__HolLight__ParserTypes_hh
 
-#include "deepmath/zz/HolLight/Types.hh"
+#include "Types.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

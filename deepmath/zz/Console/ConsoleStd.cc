@@ -12,7 +12,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/Console/ConsoleStd.hh"
+#include "ConsoleStd.hh"
 
 namespace ZZ {
 using namespace std;
@@ -66,6 +66,13 @@ void putAt(uint y, uint x, AChar c)
     xlatY(y); xlatX(x);
     if (y < con_rows() && x < con_cols())
         con[y][x] = c;
+}
+
+
+AChar getAt(uint y, uint x)
+{
+    xlatY(y); xlatX(x);
+    return (y < con_rows() && x < con_cols()) ? con[y][x] : AChar();
 }
 
 

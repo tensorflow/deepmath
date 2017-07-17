@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/PremiseViewer.hh"
-#include "deepmath/zz/Console/ConsoleStd.hh"
-#include "deepmath/zz/HolLight/HolFormat.hh"
-#include "deepmath/zz/HolLight/ProofStore.hh"
-#include "deepmath/zz/HolLight/DetailedViewer.hh"
+#include "PremiseViewer.hh"
+#include "zz/Console/ConsoleStd.hh"
+#include "HolFormat.hh"
+#include "ProofStore.hh"
+#include "DetailedViewer.hh"
 
 namespace ZZ {
 using namespace std;
@@ -555,7 +555,8 @@ void PremiseViewer::redrawInfo()
                     (d.cat == cc_BINDER ) ? fgRgb(1,5,1, sty_BOLD)  * bg_info_pane :
                     (d.cat == cc_FREEVAR) ? fgRgb(5,1,1)            * bg_info_pane :
                     (d.cat == cc_VAR    ) ? fgRgb(0,4,0)            * bg_info_pane :
-                    (d.cat == cc_ABSVAR ) ? fgRgb(0,4,0, d.chr != '`' ? sty_UNDER : 0) * bg_info_pane :
+                    (d.cat == cc_ABSVAR ) ? fgRgb(0,4,0, sty_UNDER) * bg_info_pane :
+                    (d.cat == cc_TYPE   ) ? fgRgb(3,4,5, sty_ITAL)  * bg_info_pane :
                     (d.cat == cc_OTHER  ) ? fgGray(23, sty_BOLD)    * bg_info_pane :
                     /*otherwise*/          (assert(false), Attr());
         putAt(y, x++, d.chr + attr);
@@ -607,6 +608,32 @@ void PremiseViewer::computeColumns()       // <<== analyze
             wdepth[n]   = w + seen.size();
         }
     }
+}
+
+
+static String prompt(String query)
+{
+    Vec<AChar> bup;
+    for (uint x = 0; x < con_cols(); x++) bup.push(getAt(~1, x));
+
+    String text;
+    for(;;){
+        fillRow(~1, 0, ~0, bgRgb(0, 2, 0));
+        printAt(~1, 0, query, bgRgb(0, 2, 0) * fgRgb(5, 5, 5));
+        printAt(~1, query.size(), text, bgRgb(0, 2, 0) * fgRgb(5, 5, 1));
+        con_showCursor(~1, query.size() + text.size());
+
+        ConEvent ev = con_getEvent();
+        if      (ev.key == 0x7F){ if (text.size() > 0) text.pop(); }
+        else if (ev.key == '\n') break;
+        else if (ev.key == 27){ text.clear(); break; }
+        else if (ev.key >= 32 && ev.key < 127) text.push(ev.key);
+    }
+    con_hideCursor();
+
+    for (uint x = 0; x < bup.size(); x++) putAt(~1, x, bup[x]);
+
+    return text;
 }
 
 
@@ -673,6 +700,32 @@ void PremiseViewer::eventLoop()
                 col_premises.xoffset += horz_step_size;
             if (ev.key == (chr_CSI|0x44))       // arrow left
                 sub(col_premises.xoffset, horz_step_size);
+
+            if (ev.key == 'a'){
+                viewAll();
+                cursor = UIND_MAX;
+                moved_cursor = true;
+            }
+
+            if (ev.key == 'f' || ev.key == '/'){
+                auto match = [](String const& name, String const& pattern) {
+                    return strstr(name.c_str(), pattern.c_str());   // <<== for now
+                };
+
+                String pattern = prompt("Search for theorem: ");
+                if (pattern != ""){
+                    IntZet<line_t> new_view;
+                    for (uind n = 0; n < P.size(); n++)
+                        if (matchGranularity(n) && match(thmName(n), pattern))
+                            new_view.push(n);
+                    if (new_view.size() > 0){
+                        new_view.moveTo(view);
+                        cursor = 0;
+                        moved_cursor = true;
+                    }
+                }
+            }
+
 
 #if 1   /*DEBUG*/
             if (ev.key == 'z'){

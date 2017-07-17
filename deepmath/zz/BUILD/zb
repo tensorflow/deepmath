@@ -1,0 +1,1029 @@
+#!/usr/bin/env python
+# coding=latin-1
+
+import sys
+if sys.version < '2.6':
+    print "This script is not tested on Python versions below 2.6"
+    sys.exit(1)
+
+import os
+import collections
+import shutil
+import tempfile
+import multiprocessing
+import atexit
+import time
+import filecmp
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Todo:
+
+
+# - Code generators
+# - Detect when in 'EXTERN' and build the right module.
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Documentation:
+
+
+root_file = ".zb_root"
+
+
+#..............................................................................
+doc = """USAGE:
+    zb [:module(s)] <mode>  -- Build in selected target mode.
+    zb ,clean               -- Remove targets and intermediate files.
+    zb ,tclean              -- Remove only targets (bins and lib)
+    zb ,realclean           -- Recursive clean.
+    zb ,[re]init            -- Create a boiler-plate MODULE.conf
+    zb ,[re]hh              -- Create a boiler-plate MODULE.hh
+    zb ,machine             -- Prints machine type (used in 'bin' and 'out')
+
+where <mode> is a subset of the letters/symbols from below.
+
+PRIMARY-TYPE:
+    r = Release
+    d = Debug
+    p = Profile
+    q = Quick
+    <nothing> = Quick + Release
+
+SECONDARY-TYPE:
+    b = big mode
+    t = threads
+    s = no debug symbols
+    a = no asserts
+    y = toggle ymalloc (default: "on" for Release/Profile, off otherwise)
+    i = position independent code (-fPIC)
+    m = 32-bit mode (-m32)
+    o = open-mp
+    c = STL containers
+
+BUILD-OPTIONS:
+    f = force build even though 'zb' is running
+    j = no parallel build
+    v = verbose mode
+    + = more dependency checking (force 'make' on external modules)
+"""
+
+doc2 = """INTERNAL COMMANDS:
+    zb ,globals             -- Produce dependency list for "ZZ_INITIALIZER".
+    zb ,pseudo              -- Setup pseudo-root.
+"""
+
+
+# Keep in sync with above:
+valid_commands  = ["clean", "tclean", "realclean", "init", "reinit", "hh", "rehh", "globals"]
+valid_pri_types = "rdpq"
+pri_type_names  = ["release", "debug", "profile", "quick"]
+valid_sec_types = "btasyimoc"
+valid_build_opt = "fjv+"
+
+default_build = "qr"    # -- must only contain PRIMART-TYPE letters
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Probe architecture:
+
+
+build_path   = None   # Absolute path to directory with build scripts
+machine      = None   # Result of 'uname -mrs' with spaces replaced by '-'
+os_name      = None   # Result of 'uname'
+n_cores      = None   # Number of CPU cores. Good default for '-j' in the make call
+static_cxx   = None
+popcnt       = None
+std_cpp14    = None
+qt_libpath   = None
+has_readline = None
+has_ccache   = None
+
+
+def get_build_path():
+    global build_path
+    build_path = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+
+def get_machine():
+    global machine
+    global os_name
+    with os.popen("uname -mrs", "r") as p:
+        machine = p.readline().rstrip().replace(' ', '-').replace('(', '_').replace(')', '_').replace('/', '__')
+    with os.popen("uname", "r") as p:
+        os_name = p.readline().rstrip()
+
+
+def get_n_cores():
+    global n_cores
+    n_cores = multiprocessing.cpu_count()
+
+
+def try_gcc(arg):
+    return os.system('echo "int main(){ return 0; }" | g++ -xc '+arg+' - -o /dev/null >/dev/null 2>&1') == 0
+
+
+def try_gcc_alt(arg):   # -- sometimes gcc return 0 even if option is unrecognized
+    with os.popen('echo "int main(){ return 0; }" | g++ -xc ' + arg + ' - -o /dev/null 2>&1', "r") as p:
+        tmp = p.readline()
+        if "unrecognized" in tmp or "argument unused" in tmp:
+            return False
+        else:
+            return True
+
+def get_gcc_version():
+    global static_cxx
+    global popcnt
+    global std_cpp14
+    static_cxx = try_gcc_alt("-static-libstdc++")
+    popcnt = try_gcc("-mpopcnt")
+    std_cpp14 = try_gcc("-std=c++14")
+
+def get_qt_libpath():
+    global qt_libpath
+    with os.popen("qmake -query QT_INSTALL_LIBS 2> /dev/null", "r") as p:
+        qt_libpath = p.readline().rstrip()
+
+def get_available_libs():
+    global has_readline
+    has_readline = try_gcc("-lreadline")
+
+def get_ccache():
+    global has_ccache
+    has_ccache = (os.system("which ccache >/dev/null 2>&1") == 0)
+
+def probe():
+    get_build_path()
+    get_machine()
+    get_n_cores()
+    get_gcc_version()
+    get_qt_libpath()
+    get_available_libs()
+    get_ccache()
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## ZB root + magic strings:
+
+
+root_tag      = None    # Name of root directory without path (e.g. "ZZ")
+root_path     = None    # If current directory is '/home/een/ZZ/MiniSat' then 'root_path' is
+local_path    = None    #   '/home/een/ZZ' and local path is 'ZZ/MiniSat'.
+
+module_pfx    = None    # internal modules are prefixed with this string
+output_subdir = None    # intermediate files are stored here (object files etc.)
+conf_file     = None    # contains configuration for the build of a module
+module_header = None    # optional header file that exports the collective API of the module
+prelude_mod   = None    # this module is always included (set to 'None' to disable this)
+pseudo_root   = None    # a symlink, visible for #include:s, with this name will point to the root directory
+pseudo_root2  = None    # a second symlink
+
+valid_root_file_vars = ["module_pfx", "output_subdir", "conf_file", "module_header", "prelude_mod", "pseudo_root", "pseudo_root2"]
+
+
+def read_root_file(dir):
+    global module_pfx, output_subdir, conf_file, module_header, prelude_mod, pseudo_root, pseudo_root2
+
+    filename = dir + "/" + root_file
+    if not os.path.exists(filename):
+        return False
+    conf = read_config_file(filename, valid_root_file_vars)
+    module_pfx    = conf.get("module_pfx"   , [None])[0]
+    output_subdir = conf.get("output_subdir", [None])[0]
+    conf_file     = conf.get("conf_file"    , [None])[0]
+    module_header = conf.get("module_header", [None])[0]
+    prelude_mod   = conf.get("prelude_mod"  , [None])[0]
+    pseudo_root   = conf.get("pseudo_root"  , [None])[0]
+    pseudo_root2  = conf.get("pseudo_root2" , [None])[0]
+    return True
+
+
+def setup_pseudo_root():
+    if pseudo_root:
+        ensure_dir(root_path + "/.pseudo_root")
+        curr_dir = os.getcwd()
+        os.chdir(root_path + "/.pseudo_root")
+        clear_file(pseudo_root)
+        os.symlink(root_path, pseudo_root)
+        if pseudo_root2:
+            clear_file(pseudo_root2)
+            os.symlink(root_path, pseudo_root2)
+        os.chdir(curr_dir)
+
+
+def magic():
+    global root_tag, root_path, local_path, module_pfx, output_subdir, conf_file, module_header, prelude_mod, pseudo_root, pseudo_root2
+
+    cwd = os.environ['PWD']     # -- we want "logical" path, not "absolute" (makes a differenec in the presence of symbolic links)
+    if not cwd: cwd = os.getcwd();
+    dir = cwd
+    while True:
+        (head, tail) = os.path.split(dir)
+
+        if read_root_file(dir):
+            root_tag = tail
+            root_path = dir
+            local_path = cwd[len(root_path)+1:]
+
+            # Set defaults:
+            if not module_pfx:    module_pfx = root_tag + "_"
+            if not output_subdir: output_subdir = "out"
+            if not conf_file:     conf_file = "MODULE.conf"
+            if not module_header: module_header = "MODULE.hh"
+
+            setup_pseudo_root()
+            return
+
+        elif tail == "":
+            abort("Could not locate root of source tree.");
+        dir = head
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Generic helpers:
+
+
+def zb_is_running():
+    if os_name != "Darwin":
+        with os.popen("ps a -f", "r") as p:
+            for t in p:
+                #een       9190 11941  1 11:24 pts/12   S+     0:00 python /home/een/bin/nnn/zb
+                ts = t.split()
+                if ts[-1].endswith("/zb") and int(ts[1]) != os.getpid():
+                    return True
+    else:
+        with os.popen("ps a", "r") as p:
+            for t in p:
+                # 1784 s001  Ss     0:00.02 login -pfl een /bin/bash -c exec -la bash /bin/bash
+                ts = t.split()
+                if ts[-1].endswith("/zb") and int(ts[0]) != os.getpid():
+                    return True
+
+    return False
+
+
+# Make sure only one 'zb' is running.
+def exclusive():
+    if zb_is_running():
+        pr("'zb' is already running -- waiting for it to finish (use 'zb f' to force build).\n")
+        try:
+            while True:
+                time.sleep(0.1)
+                if not zb_is_running(): break
+        except KeyboardInterrupt:
+            pr("\n")
+            sys.exit(0)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Generic helpers:
+
+
+def pr(text):
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
+def abort(message):
+    pr("ERROR! %s\n" % message)
+    exit(255)
+
+
+def files_in_dir(dir):
+    return [f for f in os.listdir(dir) if os.path.isfile(dir+"/"+f)]
+
+
+def subdirs_in_dir(dir):
+    return [f for f in os.listdir(dir) if os.path.isdir(dir+"/"+f)]
+
+
+# Remove file if it exists
+def clear_file(filename):
+    try: os.remove(filename)
+    except: pass
+
+
+# Remove directory if it exists
+def clear_dir(dir):
+    try: os.rmdir(dir)
+    except: pass
+
+
+def remove_empty_dirs(dir):
+    if os.path.exists(dir):
+        for d in subdirs_in_dir(dir):
+            remove_empty_dirs(dir+"/"+d)
+        if os.listdir(dir) == []:
+            os.rmdir(dir)
+
+
+def ensure_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    else:
+        assert os.path.isdir(dir)
+
+
+def ensure_dir_for_file(filename):
+    dir = os.path.dirname(filename)
+    if dir:
+        ensure_dir(dir)
+
+
+# NOTE! We allow for a small difference in "mtime" because 'shutil.copy2' does not preserve
+# timestamps perfectly.
+def up_to_date(src, dst):
+    return os.path.exists(dst) and os.stat(dst).st_mtime + 0.001 > os.stat(src).st_mtime
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Build helpers:
+
+
+# Create module name from local path.
+# Example: "Bip/Check" becomes "ZZ_Bip.Check". The '/' is problematic; we replace it by a '.'
+# rather than a '_' because an underscore is more likely to be used in a directory name.
+def get_curr_module():
+    if local_path == "":
+        abort("You are at the root. There is no module here.")
+    if local_path.startswith("EXTERN/"):
+        return ".".join(local_path[7:].split("/"))
+    else:
+        return module_pfx + ".".join(local_path.split("/"))
+
+
+def module_path(module_name):
+    assert module_name.startswith(module_pfx)
+    return root_path + "/" + module_name[len(module_pfx):].replace(".", "/")
+
+
+# Change directory to given module or abort if doesn't exist.
+def go_to_module(module_name):
+    try:
+        os.chdir(module_path(module_name))
+    except:
+        abort("No such module in source-tree: " + module_name)
+
+
+def make_short_qualifier(pri, sec_types):
+    text = pri_type_names[valid_pri_types.index(pri)]
+    if sec_types: text += "_" + "".join(sec_types)
+    return text
+
+
+def make_qualifier(pri, sec_types):
+    return machine + "/" + make_short_qualifier(pri, sec_types)
+
+
+# Returns a set of triplets '(target-type, local-name, public-name)'
+def published_execs(conf):
+    if "PUBLISH_BIN" not in conf: return []
+    ps = conf["PUBLISH_BIN"]
+    result = set()
+    for trip in [ps[i:i+3] for i in range(0, len(ps), 3)]:
+        src = trip[0].split("/")
+        if len(trip) != 3 or trip[1] != '->' or len(src) != 2:
+            abort("PUBLISH_BIN should be a sequence of: QUALIFIER/BIN.exe -> PUBLIC_BIN")
+        result.add((src[0], src[1], trip[2]))
+    return result
+
+
+# Read a config file with line "KEY = VALUE" plus:
+#   - ignore comments starting with #
+#   - concatenate lines ending in \
+#   - verify keys [optional]
+#   - apply substitutions [optional]
+def read_config_file(filename, valid_keys = None, subst = None):
+    try:
+        f = open(filename)
+    except:
+        abort("Could not open config file: "+ filename)
+    else:
+        with f:
+            result = dict()
+
+            text = f.read()
+            text = text.replace("\\\n", "")
+            if subst:
+                text = subst(text)
+            for line in text.split("\n"):
+                line = line.partition('#')[0].strip()
+                if line == "": continue
+
+                try: [name, val] = line.split("=", 1)
+                except: abort("Invalid line in config file '" + filename + "':\n => " + line)
+                name = name.strip()
+                val  = val.split()
+
+                if name in result: abort("Value for '"+ name +"' given twice in '"+ filename +"'.")
+                if valid_keys:
+                    if name not in valid_keys: abort("Invalid variable '"+ name +"' in '"+ filename +"'.")
+                result[name] = val
+            return result
+
+
+def get_conf_bool(conf, field):
+    if field not in conf: return False
+    f = conf[field]
+    if len(f) != 1: abort("Invalid boolean value for field '%s': %s" % (field, f))
+
+    if f[0] == "1"    : return True
+    if f[0] == "0"    : return False
+    if f[0] == "true" : return True
+    if f[0] == "false": return False
+    if f[0] == "on"   : return True
+    if f[0] == "off"  : return False
+    if f[0] == "yes"  : return True
+    if f[0] == "no"   : return False
+    abort("Invalid boolean value for field '%s': %s" % (field, f[0]))
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Config file:
+
+
+valid_conf_vars = set(["MOD_DEPS", "SYS_LIBS", "SYS_PATH", "SYS_INCL", "SYS_CXXFLAGS", "DEFAULT_MODE", "PUBLISH_BIN", "QT_MODULE", "AUTO_HEADER", "NO_WARN"])
+
+
+def subst_conf_symbols(text):
+    text = text.replace("<root_tag>"     , root_tag)
+    text = text.replace("<output_subdir>", output_subdir)
+    text = text.replace("<root_path>"    , root_path)
+    text = text.replace("<machine>"      , machine)
+    text = text.replace("<os_name>"      , os_name)
+    text = text.replace("<qt_libpath>"   , qt_libpath)
+
+    # Conditional symbols:
+    text = text.replace("<rt>", "" if os_name == "Darwin" else "rt")
+    text = text.replace("<readline>", "readline" if has_readline else "")
+
+    return text
+
+
+# Returns a dict: string -> [string]
+def parse_conf(mod):
+    if mod.startswith(module_pfx):
+        filename = module_path(mod) + "/" + conf_file       # -- internal module
+    else:
+        filename = root_path + "/EXTERN/" + mod + ".conf"   # -- external module
+    return read_config_file(filename, valid_conf_vars, subst_conf_symbols)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## CFLAGS/LFLAGS:
+
+
+# Inputs: primary type, secondary types
+def setup_cflags(pri, secs, cxx_mode, no_warn):
+    flags = []
+
+    # General:
+    if os_name == "Darwin": flags.append("-mmacosx-version-min=10.8")       # -- otherwise gets problems with math library
+    if os_name == "Darwin": flags.append("-Wno-array-bounds -Wno-mismatched-tags -stdlib=libc++") #TMP
+    if not no_warn: flags.append("-Wall")
+    flags.append("-D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -msse2")
+    flags.append("-DZZ_CONSTANTS_AS_MACROS")
+    flags.append('-DZZ_Prelude_hh=\\"Prelude.hh\\"')
+    if popcnt: flags.append("-mpopcnt")
+    if has_readline: flags.append("-DZZ_HAS_READLINE")
+    if pseudo_root == "NNN": flags.append("-Wno-strict-aliasing")    # -- not pretty, but this is old code and these warnings are getting annoying
+    if cxx_mode:
+        if machine.startswith("CYGWIN"): flags.append("-std=gnu++11")
+        elif std_cpp14: flags.append("-std=c++14")
+        else: flags.append("-std=c++1y")
+    flags.append("-Wno-unknown-pragmas")
+
+    # ABC flags:
+    if machine.endswith("i686") or "m" in secs:
+        flags.append("-DLIN -DSIZEOF_VOID_P=4 -DSIZEOF_LONG=4 -DSIZEOF_INT=4")
+    else:
+        flags.append("-DLIN64 -DSIZEOF_VOID_P=8 -DSIZEOF_LONG=8 -DSIZEOF_INT=4")
+
+    # Primary type:
+    if pri == "r": flags.append("-O3 -fomit-frame-pointer")
+    if pri == "p": flags.append("-O1 -pg -DZZ_PROFILE")
+    if pri == "d": flags.append("-O1 -DZZ_DEBUG")
+    if pri == "q": flags.append("-O0 -DZZ_DEBUG")
+
+    # Secondary types:
+    if "b" in secs: flags.append("-DZZ_BIG_MODE")
+    if "t" in secs: flags.append("-DZZ_PTHREADS -pthread")
+    if "a" in secs: flags.append("-DNDEBUG")
+    if "s" not in secs: flags.append("-ggdb")
+    if ("y" in secs) == (pri in "rp"): flags.append("-DZZ_NO_SMART_YMALLOC")
+    if "i" in secs: flags.append("-fPIC")
+    if "m" in secs: flags.append("-m32 -I" + root_path + "/EXTERN/zlib -DZZ_M32")
+    if "o" in secs: flags.append("-fopenmp")
+    if "c" in secs: flags.append("-DZZ_USE_STL")
+    if not cxx_mode:
+        flags.append("-Wno-sign-compare")
+
+    # Include paths:
+    assert root_path.endswith(root_tag)
+    if prelude_mod: flags.append("-I" + module_path(prelude_mod))
+    flags.append("-I" + root_path + "/include")
+    flags.append("-I" + root_path + "/EXTERN")
+    flags.append("-I" + root_path + "/.pseudo_root")
+    flags.append("-I" + root_path)   # -- to allow for bazel builds
+
+    if machine.startswith("CYGWIN"): flags.append("-mwindows")    # <<== should do something better
+
+    return " ".join(flags)
+
+
+def setup_lflags(pri, secs):
+    flags = []
+    if static_cxx:   flags.append("-static-libstdc++")
+    if pri == "p":   flags.append("-pg")
+    #if "t" in secs:
+    flags.append("-pthread")    # -- always link with pthreads; newer GCCs won't work otherwise
+    if "i" in secs: flags.append("-fPIC")
+    if "m" in secs: flags.append("-m32 -L" + root_path + "/EXTERN/zlib")
+    if "o" in secs: flags.append("-fopenmp")
+
+    if machine.startswith("CYGWIN"): flags.append("-mwindows")    # <<== should do something better
+    return " ".join(flags)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Helper types:
+
+
+BuildParams = collections.namedtuple('BuildParams', 'pri_type, sec_types, build_opt')
+    # types: (pri_type : char) (sec_types : list<char>) (build_opt : list<char>)
+
+ModuleDeps = collections.namedtuple('ModuleDeps', 'mod_deps, sys_libs, sys_path, sys_incl, sys_cxxflags')
+    # types: (mod_deps : list<str>) (sys_libs : list<str>) (sys_path : list<str>) (sys_incl : list<str>) (sys_cxxflags : list<str>)
+
+def mk_ModuleDeps():
+    return ModuleDeps([], [], [], [], [])
+
+def ordered_merge(master_list, extra_elems):
+    for x in extra_elems:
+        if x not in master_list:
+            master_list.append(x)
+
+def combine_ModuleDeps(d0, d):
+    ordered_merge(d0.mod_deps, d.mod_deps)
+    ordered_merge(d0.sys_libs, d.sys_libs)
+    ordered_merge(d0.sys_path, d.sys_path)
+    ordered_merge(d0.sys_incl, d.sys_incl)
+    ordered_merge(d0.sys_cxxflags, d.sys_cxxflags)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## External modules:
+
+
+def build_external_module(mod, params):
+    if not os.path.exists(root_path + "/EXTERN/build_" + mod):
+        abort("No script to build external module: " + mod)
+
+    lib_dir = root_path + "/lib/" + make_qualifier(params.pri_type, params.sec_types)
+    bin_dir = root_path + "/bin/" + machine
+    include_dir = root_path + "/include"
+    ensure_dir(lib_dir)
+    ensure_dir(bin_dir)
+    ensure_dir(include_dir)
+
+    os.environ["ZB_PRI_TYPE"] = params.pri_type
+    os.environ["ZB_SEC_TYPES"] = "".join(params.sec_types)
+    os.environ["ZB_LIB_DIR"] = lib_dir
+    os.environ["ZB_BIN_DIR"] = bin_dir
+    os.environ["ZB_INCLUDE_DIR"] = include_dir
+    os.environ["ZB_FAST_DEPS"] = "1" if "+" not in params.build_opt else "0"
+    os.environ["ZB_VERBOSE"] = "1" if "v" in params.build_opt else "0"
+    os.environ["ZB_MACHINE"] = machine
+    os.environ["ZB_N_CORES"] = str(n_cores)
+    os.environ["ZB_BUILD_PATH"] = build_path
+
+    os.chdir(root_path + "/EXTERN/")
+    os.environ["ZB_CMD"] = "build"
+    ret = os.system("./build_" + mod)
+    if ret != 0: abort("Last command returned error code: %d" % ret)
+
+    os.environ["ZB_CMD"] = "header"
+    ret = os.system("./build_" + mod)
+    if ret != 0: abort("Last command returned error code: %d" % ret)
+
+
+def clean_external_module(mod):
+    if not os.path.exists(root_path + "/EXTERN/build_" + mod):
+        abort("No script to build (or clear) external module: " + mod)
+
+    bin_dir = root_path + "/bin/" + machine
+    include_dir = root_path + "/include"
+    ensure_dir(bin_dir)
+    ensure_dir(include_dir)
+
+    os.chdir(root_path + "/EXTERN")
+    os.environ["ZB_CMD"] = "clean"
+    os.environ["ZB_PRI_TYPE"] = ""
+    os.environ["ZB_SEC_TYPES"] = ""
+    os.environ["ZB_LIB_DIR"] = ""
+    os.environ["ZB_BIN_DIR"] = bin_dir
+    os.environ["ZB_INCLUDE_DIR"] = include_dir
+    os.environ["ZB_FAST_DEPS"] = ""
+    os.environ["ZB_VERBOSE"] = ""
+    os.environ["ZB_MACHINE"] = machine
+    os.environ["ZB_N_CORES"] = str(n_cores)
+    os.environ["ZB_BUILD_PATH"] = build_path
+
+    ret = os.system("./build_" + mod)
+    if ret != 0: abort("Last command returned error code: %d" % ret)
+
+    # Clean up '<root>/lib' and '<root>/include' files:
+    out = tempfile.NamedTemporaryFile("w")
+    out.write("shopt -s nullglob\n")
+    out.write("rm -fv %s/include/%s.hh\n" % (root_path, mod))
+    out.write("rm -fv %s/lib/*/*/lib%s.a\n" % (root_path, mod))
+    out.flush()
+    os.system("/bin/bash " + out.name)
+    remove_empty_dirs("%s/include" % root_path)
+    remove_empty_dirs("%s/lib" % root_path)
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Build modules of one target type:
+
+
+def call_makefile(mod, params, deps, conf):
+    go_to_module(mod)
+
+    if get_conf_bool(conf, "AUTO_HEADER"):
+        if os.path.exists(module_header):
+            old_header = module_header + ".old"
+            times = os.stat(module_header)
+            shutil.move(module_header, old_header)
+            create_MODULE_hh(mod)
+            if filecmp.cmp(module_header, old_header):
+                os.utime(module_header, (times.st_atime, times.st_mtime))
+            os.remove(old_header)
+
+        else:
+            create_MODULE_hh(mod)
+
+    qual = make_qualifier(params.pri_type, params.sec_types)
+    cmd = []
+    cmd.append("make -f "+ build_path +"/module.mak")
+    if not "j" in params.build_opt: cmd.append("-j" + str(n_cores))
+    if "v" in params.build_opt:     cmd.append("VERBOSE=1")
+
+    no_warn = get_conf_bool(conf, "NO_WARN")
+
+    mod_path = module_path(mod)
+    assert mod_path.startswith(root_path)
+    local_path = mod_path[len(root_path)+1:]
+
+    cmd.append("BUILD_PATH=" + build_path)
+    cmd.append("ROOT_PATH=" + root_path)
+    cmd.append("OUTPUT_SUBDIR=" + output_subdir)
+    cmd.append("LOCAL_PATH=" + local_path)
+    cmd.append("TARGET_QUALIFIER=" + qual)
+    cmd.append("MODULE_PREFIX=" + module_pfx)
+    cmd.append("MOD_DEPS='"+ " ".join(reversed(deps.mod_deps)) +"'")   # (order of lib files matters when linking)
+    cmd.append("SYS_LIBS='"+ " ".join(deps.sys_libs) +"'")
+    cmd.append("SYS_PATH='"+ " ".join(deps.sys_path) +"'")
+    cmd.append("SYS_INCL='"+ " ".join(deps.sys_incl) +"'")
+    cmd.append("CXXFLAGS='"+ setup_cflags(params.pri_type, params.sec_types, True , no_warn) + " " + " ".join(deps.sys_cxxflags) + "'")
+    cmd.append("CFLAGS='"  + setup_cflags(params.pri_type, params.sec_types, False, no_warn) + "'")
+    cmd.append("LFLAGS='"+ setup_lflags(params.pri_type, params.sec_types) + "'")
+    if get_conf_bool(conf, "QT_MODULE"): cmd.append("QT_MODULE=1")
+    if has_ccache: cmd.append("USE_CCACHE=1")
+    cmd.append("2>&1")      # -- get errors on stdout
+
+    setup_pseudo_root()
+    ret = os.system(" ".join(cmd))
+    if ret != 0: abort("Last command returned error code: %d" % ret)
+
+    # Publish executables (if match):
+    for x in published_execs(conf):
+        if qual.endswith("/" + x[0]):   # (qualifier is 'machine/target-type', 'x[0]' is just target-type)
+            src = "/".join([output_subdir, qual, x[1]])
+            if x[2][0] == '@': dst = x[2][1:]
+            else:              dst = "/".join([root_path, "bin", machine, x[2]])
+
+            if not os.path.exists(src):
+                abort("Error in PUBLISH_BIN? No such binary: %s" % src)
+            ensure_dir_for_file(dst)
+
+            if not up_to_date(src, dst):
+                clear_file(dst)
+                shutil.copy2(src, dst)
+                pr("`` Published binary: %s\n" % dst)
+
+    # Publish module header file (if exists):
+    hfile = root_path +"/include/"+ mod +".hh"
+    if os.path.exists(module_header) and not up_to_date(module_header, hfile):
+        ensure_dir_for_file(hfile)
+        shutil.copy2(module_header, hfile)
+        pr("`` Created header: %s\n" % hfile)
+
+
+# Returns a 'ModuleDeps' tuple: "(modules built, system libraries needed, system paths needed)"
+# 'memo' caches dependency results of modules already built. 'parents' is the dependency list
+# leading to this module (to avoid cycles).
+def build_module_rec(mod, params, memo, parents):
+    # Check for cycles or reconvergent paths:
+    if mod in parents:
+        abort("Cyclic module dependency detected: " + " -> ".join(parents) +" -> "+ mod)
+    if mod in memo:
+        return memo[mod]
+
+    # Parse config file and recurse on dependent modules:
+    deps = mk_ModuleDeps()
+    conf = parse_conf(mod)
+
+    if get_conf_bool(conf, "QT_MODULE"):
+        if "t" not in params.sec_types:
+            abort("QT-module requires compilation with threads: " + mod + "   (use: zb t)")
+
+    mods = conf["MOD_DEPS"] if "MOD_DEPS" in conf else []
+    if prelude_mod and mod != prelude_mod:
+        mods.append(prelude_mod)
+    for m in mods:
+        combine_ModuleDeps(deps, build_module_rec(m, params, memo, parents+[mod]))
+
+    # Accumulate system libraries and paths:
+    if "SYS_LIBS" in conf:
+        ordered_merge(deps.sys_libs, conf["SYS_LIBS"])
+    if "SYS_PATH" in conf:
+        ordered_merge(deps.sys_path, conf["SYS_PATH"])
+    if "SYS_INCL" in conf:
+        ordered_merge(deps.sys_incl, conf["SYS_INCL"])
+    if "SYS_CXXFLAGS" in conf:
+        ordered_merge(deps.sys_cxxflags, conf["SYS_CXXFLAGS"])
+
+    # Build this module:
+    if mod.startswith(module_pfx):
+        call_makefile(mod, params, deps, conf)
+    else:
+        build_external_module(mod, params)
+    assert mod not in deps.mod_deps
+    deps.mod_deps.append(mod)
+
+    memo[mod] = deps
+    return deps
+
+
+def build_module(mod, params):
+    build_module_rec(mod, params, dict(), [])
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Clean-up:
+
+
+def clean_module(mod, only_targets):
+    if not mod.startswith(module_pfx):
+        clean_external_module(mod)
+        return
+
+    go_to_module(mod)
+
+    out = tempfile.NamedTemporaryFile("w")
+    out.write("shopt -s nullglob\n")    # (don't leave "*" in unmatching expansions)
+
+    # Select what to remove:
+    if not only_targets:
+        out.write("rm -rf %s/*\n" % output_subdir)   # (too verbose output; no "v"; next line shows removal of dir)
+        out.write("rm -rfv %s\n" % output_subdir)
+
+    out.write("rm -fv %s/include/%s.hh\n" % (root_path, mod))
+    out.write("rm -fv %s/lib/*/*/lib%s.a\n" % (root_path, mod))
+
+    conf = parse_conf(mod)
+    for x in published_execs(conf):
+        if x[2][0] == "@": out.write("rm -fv %s\n" % x[2][1:])
+        else:              out.write("rm -fv %s/bin/*/%s\n" % (root_path, x[2]))
+
+    # Execute temporary script:
+    out.flush()
+    os.system("/bin/bash " + out.name)
+
+    # Cleanup empty directories:
+    remove_empty_dirs("%s/include" % root_path)
+    remove_empty_dirs("%s/lib" % root_path)
+    remove_empty_dirs("%s/bin" % root_path)
+
+
+def realclean_module_rec(mod, seen, parents):
+    # Check for cycles or reconvergent paths:
+    if mod in parents:
+        abort("Cyclic module dependency detected: " + " -> ".join(parents) +" -> "+ mod)
+    if mod in seen:
+        return
+
+    if mod.startswith(module_pfx):  # (i.e. this is an internal module)
+        conf = parse_conf(mod)
+        mods = conf["MOD_DEPS"] if "MOD_DEPS" in conf else []
+        if prelude_mod and mod != prelude_mod:
+            mods.append(prelude_mod)
+        for m in mods:
+            realclean_module_rec(m, seen, parents+[mod])
+
+    pr("==== CLEANING: %s\n" % mod)
+    clean_module(mod, False)
+    seen.add(mod)
+
+
+def realclean_module(mod):
+    realclean_module_rec(mod, set(), [])
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Auto-generation:
+
+
+def grep_mods(filename, mods):
+    with open(filename, "rb") as inp:
+        for line in inp:
+            t = line.split()
+            if len(t) >= 2 and t[0] == "#include":
+                name = t[1][1:-1]
+                if name.startswith(module_pfx) and name.endswith(".hh"):
+                    mods.add(name[:-3])
+
+
+# Try to get the top '#ifndef' guard (very rudimentary; doesn't matter for correctness if succeeds)
+def grep_guard(filename):
+    with open(filename, "rb") as inp:
+        for line in inp:
+            line = line.strip()
+            if line == "": continue
+            if line.startswith("//"): continue
+            t = line.split()
+            if len(t) >= 2 and t[0] == "#ifndef":
+                return t[1]
+            else:
+                break
+        return None
+
+
+def create_MODULE_conf(mod):
+    go_to_module(mod)
+    if os.path.exists(conf_file): abort("'%s' already exists." % conf_file)
+
+    mods = set()
+    bins = set()
+    for f in files_in_dir("."):
+        if f.endswith(".cc") or f.endswith(".hh") or f.endswith(".icc") or f.endswith(".ihh") or f.endswith(".c") or f.endswith(".h") or f.endswith(".C"):
+            grep_mods(f, mods)
+        if f.startswith("Main_") and f.endswith(".cc"):
+            bins.add(f[5:-3])
+        if f.startswith("Main_") and (f.endswith(".c") or f.endswith(".C")):
+            bins.add(f[5:-2])
+
+    with open(conf_file, "w") as out:
+        out.write("MOD_DEPS = %s\n" % " ".join(mods))
+        if len(bins) > 0:
+            out.write("\n")
+            out.write("PUBLISH_BIN = \\\n")
+            width = max(map(len, pri_type_names))
+            for j, b in enumerate(bins):
+                for i, t in enumerate(pri_type_names):
+                    last = (j == len(bins)-1) and (i == len(pri_type_names)-1)
+                    out.write("    %s/%s.exe %s-> @%s%s%s\n" %
+                        (t, b, " "*(width-len(t)), b, (("_" + t) if i != 0 else ""), (" \\" if not last else "")) )
+
+
+def create_MODULE_hh(mod):
+    go_to_module(mod)
+    if os.path.exists(module_header): abort("'%s' already exists." % module_header)
+
+    mod_path = pseudo_root + os.getcwd()[len(root_path):]
+
+    with open(module_header, "w") as out:
+        for f in files_in_dir("."):
+            if f == module_header: continue
+            if f.endswith(".hh") or f.endswith(".h"):
+                g = grep_guard(f)
+                if g:
+                    out.write("#ifndef %s\n#include \"%s/%s\"\n#endif\n" % (g, mod_path, f))
+                else:
+                    out.write("#include \"%s/%s\"\n" % (mod_path, f))
+
+
+##mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+## Main:
+
+
+def main():
+    if ("-h" in sys.argv) or ("-help" in sys.argv) or ("--help" in sys.argv): pr(doc); sys.exit(0)
+    if ("-H" in sys.argv): pr(doc); pr("\n"); pr(doc2); sys.exit(0)
+    if (",pseudo" in sys.argv): magic(); sys.exit(0)
+    if (",machine" in sys.argv): get_machine(); print machine; sys.exit(0)
+
+    magic()
+    probe()
+
+    #|
+    #| PARSE COMMANDLINE:
+    #|
+    cmd = None
+    modules   = []
+    pri_types = []
+    sec_types = []
+    build_opt = []
+
+    for arg in sys.argv[1:]:
+        if arg[0] == ',':
+            if cmd: abort("Only one command can be given.")
+            cmd = arg[1:]
+
+        elif arg[0] == ':':
+            modules.append(arg[1:])
+
+        else:
+            for c in arg:
+                if c in pri_types or c in sec_types or c in build_opt: abort("Mode character given twice: " + c)
+
+                if   c in valid_pri_types: pri_types.append(c)
+                elif c in valid_sec_types: sec_types.append(c)
+                elif c in valid_build_opt: build_opt.append(c)
+                else: abort("Invalid mode character: " + c)
+
+    if cmd and cmd not in valid_commands:
+        abort("Invalid command. Use '%s -h' for command line help." % os.path.basename(sys.argv[0]))
+
+    # If no modules are specified, compile module in current directory:
+    if not modules:
+        modules = [get_curr_module()]
+        if local_path.startswith("EXTERN/") and '+' not in build_opt:
+            build_opt.append('+')   # -- if typing 'zb' while in the directory of an EXTERN module, add '+' automatically
+
+    # If no 'pri_types' is given, use contents of 'default_build' (unless a command is given or
+    # DEFAULT_MODE is provided in config file):
+    if not pri_types:
+        if not cmd:
+            if len(modules) == 1 and not sec_types:
+                conf = parse_conf(modules[0])
+                if "DEFAULT_MODE" in conf:
+                    for arg in conf["DEFAULT_MODE"]:
+                        for c in arg:
+                            if c in pri_types or c in sec_types: abort("DEFAULT_MODE: mode character given twice: " + c)
+                            if   c in valid_pri_types: pri_types.append(c)
+                            elif c in valid_sec_types: sec_types.append(c)
+                            else: abort("DEFAULT_MODE: Invalid mode character: " + c)
+
+                if get_conf_bool(conf, "QT_MODULE") and "t" not in sec_types:
+                    sec_types.append('t')       # -- automatically turn on threads for QT modules
+
+            if not pri_types:
+                pri_types = list(default_build)
+
+    sec_types.sort()        # -- important to normalize so that target qualifier becomes unique
+
+    #|
+    #| RUN COMMAND:
+    #|
+    if 'f' not in build_opt:
+        exclusive()
+
+    if cmd == "globals":
+        for mod in modules:
+            if not mod.startswith(module_pfx): abort("Command only applies to internal modules.")
+            go_to_module(mod)
+
+            with open("Main___INIT__.cc", "w") as out:
+                out.write("#include \"Prelude.hh\"\nusing namespace ZZ;\nint main(int argc, char** argv){ ZZ_Init; return 0; }")
+            params = BuildParams("q", [], [])
+            build_module(mod, params)
+            os.system("ZZ_EMIT_GLOBAL_DEP= %s/%s/__INIT__.exe" % (output_subdir, make_qualifier("q", [])))
+            os.remove("Main___INIT__.cc")
+
+    elif cmd == "init" or cmd == "reinit" or cmd == "hh" or cmd == "rehh":
+        # Command is independent of target type:
+        for mod in modules:
+            if not mod.startswith(module_pfx): abort("Command only applies to internal modules.")
+            go_to_module(mod)
+
+            if cmd == "init":
+                create_MODULE_conf(mod)
+            elif cmd == "reinit":
+                clear_file(conf_file)
+                create_MODULE_conf(mod)
+            elif cmd == "hh":
+                create_MODULE_hh(mod)
+            elif cmd == "rehh":
+                clear_file(module_header)
+                create_MODULE_hh(mod)
+            else: assert False
+
+    else:
+        # Clean-up?
+        if cmd:
+            for mod in modules:
+                if   cmd == "clean":     clean_module(mod, False)
+                elif cmd == "tclean":    clean_module(mod, True)
+                elif cmd == "realclean": realclean_module(mod)
+
+        # For each primary type, build given modules:
+        for pri in pri_types:
+            params = BuildParams(pri, sec_types, build_opt)
+            for mod in modules:
+                pr("==== BUILDING: %s/%s\n" % (make_short_qualifier(pri, sec_types), mod))
+                build_module(mod, params)
+
+
+main()

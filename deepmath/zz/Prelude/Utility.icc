@@ -403,17 +403,25 @@ double parseDouble_(IN& in)
             while (!eof(in) && *in >= '0' && *in <= '9') in++;    // -- just ignore fractional part, we have too many digits already
 
         }else{
+            uint trailing_zeros = 0;
             while (!eof(in) && *in >= '0' && *in <= '9'){
                 uint64 dig = *in - '0';
                 if (r < 1844674407370955161ull || (r == 1844674407370955161ull && dig <= 5)){     // -- maximum 64-bit unsigned number: 18446744073709551615
                     r = r * 10 + dig;
                     in++;
                     pow_of_10--;
+                    if (dig == 0) trailing_zeros++;
+                    else          trailing_zeros = 0;
                 }else{
                     in++;
                     while (!eof(in) && *in >= '0' && *in <= '9') in++;    // -- ignore remaining fractional part, we have too many digits already
                     break;
                 }
+            }
+            while (trailing_zeros > 0){     // -- because we are parsing one character at a time from an abstract stream, it is easier to undo zeros than to buffer the whole thing
+                r /= 10;
+                pow_of_10++;
+                trailing_zeros--;
             }
         }
     }

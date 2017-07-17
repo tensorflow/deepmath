@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/Kernel.hh"
-#include "deepmath/zz/HolLight/Printing.hh"  // -- for debugging
+#include "Kernel.hh"
+#include "ParserTypes.hh"
+#include "Printing.hh"
+  // -- 'ParserTypes.hh' for proof-logging (using 'RuleKind' enum)
+  // -- 'Printing.hh' for debugging
 
 namespace ZZ {
 using namespace std;
@@ -118,6 +121,8 @@ inline size_t size(List<T> list) {
 // Kernel state variables:
 
 
+bool kernel_proof_logging = false;
+
 static Vec<Ax> kernel_axioms;
     // In 'fusion.ml' it's called "the_axioms". Elements are populated from from 'kernel_New_Ax()'.
 
@@ -183,7 +188,7 @@ ZZ_PTimer_Add(kernel_Inst_Cnst);
 //
 Thm kernel_REFL(Term tm) {
     ZZ_PTimer_Scope(kernel_REFL);
-    return Thm(makeEqTerm(tm, tm)); }
+    return Thm(makeEqTerm(tm, tm), logStep(rule_REFL, tm)); }
 
 
 //    (\x. t) x
@@ -199,7 +204,7 @@ Thm kernel_BETA(Term tm)
     Term lam = tm.fun(); assert(lam.is_abs());
     Term x   = tm.arg(); assert(x.is_var()); assert(x.type() == lam.avar().type());
     Term t   = lam.betaRed(x);
-    return Thm(makeEqTerm(tm, t));
+    return Thm(makeEqTerm(tm, t), logStep(rule_BETA, tm));
 }
 
 
@@ -211,7 +216,7 @@ Thm kernel_ASSUME(Term tm)
 {
     ZZ_PTimer_Scope(kernel_ASSUME);
     assert(tm.type() == type_bool);
-    return Thm(SSet<Term>(tm), tm);
+    return Thm(SSet<Term>(tm), tm, logStep(rule_ASSUME, tm));
 }
 
 
@@ -228,7 +233,7 @@ Thm kernel_ABS(Thm th, Term x)
 
     Term l = th.concl().fun().arg();
     Term r = th.concl().arg();
-    return Thm(th.hyps(), makeEqTerm(tmAbs(x, l), tmAbs(x, r)));
+    return Thm(th.hyps(), makeEqTerm(tmAbs(x, l), tmAbs(x, r)), logStep(rule_ABS, th, x));
 }
 
 
@@ -246,7 +251,7 @@ Thm kernel_TRANS(Thm th1, Thm th2)
     Term m_ = eq2.fun().arg();
     Term r  = eq2.arg();
     assert(m == m_);
-    return Thm(th1.hyps() | th2.hyps(), makeEqTerm(l, r));
+    return Thm(th1.hyps() | th2.hyps(), makeEqTerm(l, r), logStep(rule_TRANS, th1, th2));
 }
 
 
@@ -270,7 +275,7 @@ Thm kernel_MK_COMB(Thm funs_eq, Thm args_eq)        // -- congruence
     assert(g.type() == ty);             // }- redundant tests, missing from Cezary's code
     assert(a.type() == b.type());       // }  (presumably you cannot create `|- x = y` with mismatching types for `x` and `y`)
 
-    return Thm(funs_eq.hyps() | args_eq.hyps(), makeEqTerm(tmComb(f, a), tmComb(g, b)));
+    return Thm(funs_eq.hyps() | args_eq.hyps(), makeEqTerm(tmComb(f, a), tmComb(g, b)), logStep(rule_MK_COMB, funs_eq, args_eq));
 }
 
 
@@ -287,7 +292,7 @@ Thm kernel_EQ_MP(Thm props_eq, Thm prop)        // -- equality modus ponens
     Term g = eq.arg();
     assert(f == f_);            // -- alpha-equality is just equality due to term normalization
 
-    return Thm(props_eq.hyps() | prop.hyps(), g);
+    return Thm(props_eq.hyps() | prop.hyps(), g, logStep(rule_EQ_MP, props_eq, prop));
 }
 
 
@@ -300,7 +305,7 @@ Thm kernel_DEDUCT(Thm th1, Thm th2)
     ZZ_PTimer_Scope(kernel_DEDUCT);
     Term c1 = th1.concl();
     Term c2 = th2.concl();
-    return Thm(th1.hyps().exclude(c2) | th2.hyps().exclude(c1), makeEqTerm(c1, c2));
+    return Thm(th1.hyps().exclude(c2) | th2.hyps().exclude(c1), makeEqTerm(c1, c2), logStep(rule_DEDUCT, th1,th2));
 }
 
 
@@ -312,7 +317,7 @@ Thm kernel_INST(Thm th, Vec<Subst>& subs)
 {
     ZZ_PTimer_Scope(kernel_INST);
     auto applySubst = [&](Term tm) { return tm.varSubst(subs); };
-    return Thm(th.hyps().map(applySubst), applySubst(th.concl()));
+    return Thm(th.hyps().map(applySubst), applySubst(th.concl()), logStep(rule_INST, th, mkList_substs(subs)));
 }
 
 
@@ -324,10 +329,8 @@ Thm kernel_INST_T(Thm th, Vec<TSubst>& subs)
 {
     ZZ_PTimer_Scope(kernel_INST_T);
     auto applySubst = [&](Term tm) { return tm.typeSubst(subs); };
-    return Thm(th.hyps().map(applySubst), applySubst(th.concl()));
+    return Thm(th.hyps().map(applySubst), applySubst(th.concl()), logStep(rule_INST_T, th, mkList_tsubsts(subs)));
 }
-
-
 
 
 // t : bool
@@ -338,7 +341,7 @@ Thm kernel_New_Ax(Axiom name, Term tm)
 {
     ZZ_PTimer_Scope(kernel_New_Ax);
     assert(tm.type() == type_bool);
-    kernel_axioms(+name) = Ax{name, Thm(tm)};
+    kernel_axioms(+name) = Ax{name, Thm(tm, logStep(rule_New_Ax, name, tm))};
     return kernel_axioms[+name].th;
 }
 
@@ -352,7 +355,7 @@ Thm kernel_New_Def(Cnst name, Term tm)     // -- new basic definition
     ZZ_PTimer_Scope(kernel_New_Def);
     assert(!hasFreeVars(tm));
     assert(setOf_tvars(tm).subsetOf(setOf_tvars(tm.type())));
-    Thm ret = Thm(makeEqTerm(tmCnst(name, tm.type()), tm));
+    Thm ret = Thm(makeEqTerm(tmCnst(name, tm.type()), tm), logStep(rule_New_Def, name, tm));
     kernel_consts(+name) = Def{name, tm, ret};
     return ret;
 }
@@ -410,7 +413,7 @@ Thm kernel_New_TDef(TCon tc_name, Cnst abs_name, Cnst rep_name, Thm th_wit)
     Term ret2 = makeEqTerm(tmComb(P, r), makeEqTerm(tmComb(rep, tmComb(abs, r)), r));
 
     Term iand = tmCnst(cnst_iand, type_booleq);
-    Thm  ret = Thm(tmComb(tmComb(iand, ret1), ret2));
+    Thm  ret = Thm(tmComb(tmComb(iand, ret1), ret2), logStep(rule_New_TDef, tc_name, abs_name, rep_name, th_wit));
     kernel_typecons(+tc_name) = TDef{arity, tc_name, abs_name, rep_name, th_wit, ret};
     return ret;
 }
@@ -423,7 +426,7 @@ Thm kernel_Extract1(Thm th)
     assert(tm.is_comb());
     assert(tm.fun().is_comb());
     assert(tm.fun().fun().cnst() == cnst_iand);
-    return Thm(tm.fun().arg());
+    return Thm(tm.fun().arg(), logStep(rule_TDef_Ex1, th));
 }
 
 
@@ -434,7 +437,7 @@ Thm kernel_Extract2(Thm th)
     assert(tm.is_comb());
     assert(tm.fun().is_comb());
     assert(tm.fun().fun().cnst() == cnst_iand);
-    return Thm(tm.arg());
+    return Thm(tm.arg(), logStep(rule_TDef_Ex2, th));
 }
 
 

@@ -1,0 +1,72 @@
+//_________________________________________________________________________________________________
+//|                                                                                      -- INFO --
+//| Name        : ScopedPtr.ihh
+//| Author(s)   : Niklas Een
+//| Module      : Prelude
+//| Description : Non-copyable smart-pointer with auto-delete on end-of-scope.
+//| 
+//| (C) Copyright 2010-2014, The Regents of the University of California
+//|________________________________________________________________________________________________
+//|                                                                                  -- COMMENTS --
+//| 
+//|________________________________________________________________________________________________
+
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+template<class T> class ScopedPtr : NonCopyable {
+    T* ptr;
+
+    ScopedPtr(ScopedPtr const &);
+    ScopedPtr& operator=(ScopedPtr const &);
+
+public:
+    typedef ScopedPtr<T> this_type;
+    typedef T  element_type;
+    typedef T* this_type::*bool_type;       // -- this trick requires an arbitrary member pointer to a member variable
+
+    explicit ScopedPtr(T* p = NULL) : ptr(p) {}
+   ~ScopedPtr(){ delete ptr; }
+
+    void reset(T* p = NULL) {  // -- dispose this object, then replace it with 'p' if specified
+        assert_debug(p == NULL || p != ptr);   // -- catch self-reset errors
+        this_type(p).swap(*this); }
+
+    T* operator=(T* p) { reset(p); return p; } // -- takes ownership of pointer
+
+    T& operator*() const {
+        assert_debug(ptr != NULL);
+        return *ptr; }
+
+    T* operator->() const {
+        assert_debug(ptr != NULL);
+        return ptr; }
+
+    T* get() const {
+        return ptr; }
+
+    operator bool_type() const {
+        return (ptr == NULL) ? 0 : &this_type::ptr; }
+
+    void swap(ScopedPtr& p) {
+        T* tmp = p.ptr;
+        p.ptr = ptr;
+        ptr   = tmp; }
+
+    void moveTo(ScopedPtr& p) {
+        p.reset(ptr);
+        ptr = NULL; }
+};
+
+
+// 'swp' and 'mov' are generiv swap and move functions in ZZ; specialize them for this type:
+template<class T> macro void swp(ScopedPtr<T>& a, ScopedPtr<T>& b) { a.swap(b); }
+template<class T> macro void mov(ScopedPtr<T>& a, ScopedPtr<T>& b) { a.moveTo(b); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}

@@ -20,7 +20,6 @@
 
 #ifndef ZZ__Generics__Set_h
 #define ZZ__Generics__Set_h
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

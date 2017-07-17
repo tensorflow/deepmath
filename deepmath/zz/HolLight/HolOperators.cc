@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/HolOperators.hh"
+#include "HolOperators.hh"
 
 namespace ZZ {
 using namespace std;

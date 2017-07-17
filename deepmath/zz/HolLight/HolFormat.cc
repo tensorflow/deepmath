@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/HolFormat.hh"
+#include "HolFormat.hh"
 
 #include <memory>           // -- for 'unique_ptr'
 
-#include "deepmath/zz/HolLight/HolOperators.hh"
-#include "deepmath/zz/HolLight/Printing.hh"      // -- for printing types in 'simpleFmtTerm()'.
+#include "HolOperators.hh"
+#include "Printing.hh"
+    // -- 'Printing.hh' for printing types in 'simpleFmtTerm()'.
 
 #define TRANSLATE_EQ_TO_EQUIV
 
@@ -73,19 +74,35 @@ static bool getOpExpr(Term tm, /*outs:*/Term& op, Term& x, Term& y, HolOp& h)
     }
 
     if (f.is_comb() && f.fun().is_cnst() && (h = hol_ops[f.fun().cnst()])){
-        op = f.fun();
-        x  = f.arg();
-        y  = g;
-      #if defined(TRANSLATE_EQ_TO_EQUIV)
-        if (op.cnst() == cnst_eq && x.type() == type_bool && y.type() == type_bool){
-            op = tmCnst(cnst_equiv, op.type());
-            h  = hol_ops[cnst_equiv]; }
-      #endif
-        return true;
+        if (h.kind == op_INFIXL || h.kind == op_INFIXR){
+            op = f.fun();
+            x  = f.arg();
+            y  = g;
+          #if defined(TRANSLATE_EQ_TO_EQUIV)
+            if (op.cnst() == cnst_eq && x.type() == type_bool && y.type() == type_bool){
+                op = tmCnst(cnst_equiv, op.type());
+                h  = hol_ops[cnst_equiv]; }
+          #endif
+            return true;
+        }
     }
 
     return false;
 }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Bound variable naming:
+
+
+/*
+bool: u, v, w
+num: x, y, z
+A->bool: P, Q, R, S
+A->B: f, g, h,
+prod<A,B>: p, q
+other: a, b, c, d
+*/
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -231,6 +248,12 @@ FmtRet fmtTerm(Term tm, uint depth)
         h.prec = prec_BINDER;
         binder = sym;
         vars = dsAtom(Str(tm.avar().var()), cc_ABSVAR, tm.avar());
+#if 1  // DEBUG
+        String ttext;
+        wr(ttext, " :%_", tm.avar().type());
+        DStrP type = dsAtom(ttext.slice(), cc_TYPE, tm.avar());
+        vars = dsComp(move(vars), move(type));
+#endif // END-DEBUG
 
         FmtRet sub = fmt(tm.aterm());
         if (sub.binder == sym){
@@ -286,7 +309,7 @@ FmtRet fmtTerm(Term tm, uint depth)
                 body = dsComp(move(op_str), move(space), sub.realize());
 
             }else{ assert(h.kind == op_BINDER);
-                mkBinder(op.cnst(), y);
+                mkBinder(op.cnst(), y);     // -- NOTE: 'getOpExpr()' guarantees 'y' is an abs-term
             }
 
         }else{

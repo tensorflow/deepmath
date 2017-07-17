@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/DetailedViewer.hh"
-#include "deepmath/zz/Console/ConsoleStd.hh"
-#include "deepmath/zz/HolLight/PremiseViewer.hh"
-#include "deepmath/zz/HolLight/HolFormat.hh"
+#include "DetailedViewer.hh"
+#include "zz/Console/ConsoleStd.hh"
+#include "PremiseViewer.hh"
+#include "HolFormat.hh"
 
 namespace ZZ {
 using namespace std;
@@ -76,9 +76,9 @@ FgAttr fg_term[CharCat_size] = {
     fgRgb(5,3,0, sty_BOLD),  // EQUAL
     fgRgb(1,5,1, sty_BOLD),  // BINDER
     fgRgb(0,4,0),            // VAR
-//    fgRgb(0,4,0, sty_UNDER), // ABSVAR
-    fgRgb(1,5,1, sty_BOLD), // ABSVAR
+    fgRgb(1,5,1, sty_BOLD),  // ABSVAR
     fgRgb(5,1,1),            // FREEVAR
+    fgRgb(3,4,5, sty_ITAL),  // TYPE
     fgGray(23, sty_BOLD),    // OTHER
 };
 
@@ -219,7 +219,7 @@ Vec<AChar> DetailedViewer::formatTerm(Term tm)
 {
     Vec<AChar> out;
     for (DChar d : fmtTerm(tm)){
-        /**/if (d.chr == '`' && d.cat != cc_CNST) continue;
+        //**/if (d.chr == '`' && d.cat != cc_CNST) continue;
         out.push(AChar(d.chr, fg_term[d.cat])); }
     return out;
 }

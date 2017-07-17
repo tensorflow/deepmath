@@ -1,0 +1,47 @@
+syntax = "proto2";
+
+package CodeBreeder;
+
+message TypeProto {
+  optional string name = 1;
+  repeated TypeProto arg = 2;
+};
+
+enum NodeKind {
+  NIL   = 0;
+  POOL  = 1;
+  PI    = 2;
+  ID    = 3;
+  APPL  = 4;
+  TUPLE = 5;
+  SEL   = 6;
+  LAMB  = 7;
+  OBL   = 8;
+  SCOPE = 9;
+  BEGIN = 10;
+  END   = 11;
+};
+
+message NodeProto {
+  optional string kind = 1;
+  optional bool internal = 2;
+  optional double cost = 3;
+  repeated int32 input = 4;           // For negative numbers, use '~val' to get attribute (1-complement)
+  optional TypeProto type_proto = 5;  // This one is actually optional (for kind = "Begin", "End", or "Scope")
+};
+
+message StateProto {
+  repeated NodeProto node = 1;
+};
+
+message PoolProto {
+  repeated string name = 1;           // }
+  repeated TypeProto type_proto = 2;  // }- These three repeated fields have the same length
+  repeated string qualified_name = 3; // }
+};
+
+message TrainingProto {
+  optional PoolProto pool_proto = 1;
+  repeated StateProto positive = 2;  // }- Each geneaology sequence is terminated by an empty state
+  repeated StateProto negative = 3;  // }
+};

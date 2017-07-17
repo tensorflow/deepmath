@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/Checker.hh"
-#include "deepmath/zz/HolLight/Parser.hh"
-#include "deepmath/zz/HolLight/RuleApply.hh"
-#include "deepmath/zz/HolLight/Printing.hh"
+#include "Checker.hh"
+#include "Parser.hh"
+#include "RuleApply.hh"
+#include "Printing.hh"
 
 namespace ZZ {
 using namespace std;

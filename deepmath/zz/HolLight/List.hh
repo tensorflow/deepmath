@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef ZZ__HolLight__List_hh
 #define ZZ__HolLight__List_hh
 
-#include "deepmath/zz/HolLight/Hashing.hh"
-#include "deepmath/zz/Generics/Sort.hh"
+#include "Hashing.hh"
+#include "zz/Generics/Sort.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -80,6 +79,16 @@ struct List : Composite<BaseList> {
     explicit operator bool() const { return id != id_NULL; }
     bool empty() const { return id == id_NULL; }
 
+    size_t size() const {
+        size_t c = 0;
+        for (List<T> it(*this); it; ++it) c++;
+        return c; }
+
+    Vec<T> toVec() const {
+        Vec<T> ret;
+        for (List<T> it(*this); it; ++it) ret.push(*it);
+        return ret; }
+
     List()        {}   // }- parent construct will set 'id = 0'
     List(NilType) {}   // }
     List(id_t id) : P(id) {}
@@ -127,17 +136,21 @@ inline List<T> mkList(const initializer_list<T>& elems){
     return mkList(xs); }
 
 
-// Pretty-printing:
-template<class T> fts_macro void write_(Out& out, List<T> const& list) {
-    out += '{';
+// Pretty-printing: ("%b" means include braces (default), "%n" no braces)
+template<class T> fts_macro void write_(Out& out, List<T> const& list, Str flags) {
+    assert(flags.size() == 1);
+    if (flags[0] == 'b') out += '{';
     bool first = true;
     for (List<T> it = list; it; ++it){
         if (first) first = false;
         else       out += ", ";
         out += *it;
     }
-    out += '}';
+    if (flags[0] == 'b') out += '}';
 }
+
+template<class T> fts_macro void write_(Out& out, List<T> const& list) {
+    write_(out, list, slize("b")); }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -163,12 +176,6 @@ struct SSet : List<T> {
 
     bool has     (T x)      const { return setHas(Lst(*this), x); }
     bool subsetOf(SSet big) const { return setSubsetOf(Lst(*this), big); }
-
-    size_t size() const {
-        size_t c = 0;
-        for (List<T> it(*this); it; ++it) c++;
-        return c;
-    }
 
     template<class FUN> auto map(FUN f) const -> SSet<decltype(f(T()))> {   // -- awkward because of C++11
         typedef decltype(f(T())) Ret;

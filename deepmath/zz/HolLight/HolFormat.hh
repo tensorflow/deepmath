@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__HolFormat_hh
 #define ZZ__HolLight__HolFormat_hh
 
-#include "deepmath/zz/HolLight/HolOperators.hh"
+#include "HolOperators.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -34,6 +33,7 @@ enum CharCat : uchar {
     cc_VAR,         // -- bound variable
     cc_ABSVAR,      // -- abstraction variable (variable at binding position)
     cc_FREEVAR,
+    cc_TYPE,
     cc_OTHER,
 
     CharCat_size
@@ -49,6 +49,9 @@ struct DChar {
 
 
 Vec<DChar> fmtTerm(Term tm);
+
+template<> fts_macro void write_(Out& out, DChar const& c)     { out += c.chr; }
+template<> fts_macro void write_(Out& out, Vec<DChar> const& v){ for (DChar c : v) out += c; }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

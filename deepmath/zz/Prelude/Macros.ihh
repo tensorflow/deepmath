@@ -4,21 +4,22 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Miscellaneous macros.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
 //| Define various macros:
-//| 
+//|
 //|   elemsof( <c-array> )      -- Yields an expression stating the number of element in an array.
 //|   ZZ_Comma                  -- Use this if you need to pass a ',' in a macro argument.
-//|   static_assert( <cond> )   -- Compile time assertions.  
+//|   static_assert( <cond> )   -- Compile time assertions.
 //|   assert_debug ( <cond> )   -- Assertion active in debug mode only.
 //|   Ping                      -- Print a "got here" type of message on 'stderr' (debugging).
 //|   macro                     -- Abbreviation for "static inline" which is tedious to type.
 //|   fts_macro                 -- Use this for "function template specializations".
 //|   Iter_Var( <base-name> )   -- Get the iterator variable from a iteration macro.
 //|   Null_Method( <type> )     -- Used inside class decl. to define 'null()' and 'bool_type' oper.
+//|   Range_For                 -- Define 'begin()' and 'end()' in terms of 'size()' and 'op[]'.
 //|________________________________________________________________________________________________
 
 namespace ZZ {
@@ -50,22 +51,22 @@ template <int>  struct static_assert_test {};
   #define assert_debug(x) ((void)0)
 #endif
 
-#define Ping (fflush(stdout), fprintf(stderr, "%s %d\n", __FILE__, __LINE__), fflush(stderr))    // -- for debugging
+#define Ping (fflush(stderr), printf("%s %d\n", __FILE__, __LINE__), fflush(stdout))    // -- for debugging
 
 // Debug tracing facility. Usage:
-//  "DB statement;" or "DS{ block }" 
-//  "DX( expr ),"
+//  "DB_ statement;" or "DB_{ block }"
+//  "DX_( expr ),"
 // Then run with env. variable 'ZZ_TRACE' set.
 extern bool zz_debug_tracing;
 #if defined(ZZ_DEBUG)
-  #define DB if(zz_debug_tracing)
+  #define DB_ if(zz_debug_tracing)
 #else
-  #define DB if(false)
+  #define DB_ if(false)
 #endif
 #if defined(ZZ_DEBUG)
-  #define DX(expr) (void)(zz_debug_tracing ? ((expr), 0) : 0)
+  #define DX_(expr) (void)(zz_debug_tracing ? ((expr), 0) : 0)
 #else
-  #define DX(expr) (void)
+  #define DX_(expr) (void)
 #endif
 
 #define macro static inline
@@ -83,11 +84,32 @@ extern bool zz_debug_tracing;
     typedef bool (this_type::*bool_type)() const; \
     operator bool_type() const { return null() ? 0 : &this_type::null; } \
     bool null() const
-    // -- Captures the "safe bool type" idiom. Usage: 
-    // struct MyClass { 
+    // -- Captures the "safe bool type" idiom. Usage:
+    // struct MyClass {
     //     [...]
     //     Null_Method(MyClass){ return <null-condition>; }
     // };
+
+
+// Defines member functions 'begin(), end(), slice(from), slice(from, upto)' in terms of 'operator[], size()'.
+#define Std_Array_Funcs(ElemType) \
+    ElemType* begin() { return &(*this)[0u]; } \
+    ElemType* end  () { return &(*this)[this->size()]; } \
+    ElemType const* begin() const { return &(*this)[0u]; } \
+    ElemType const* end  () const { return &(*this)[this->size()]; } \
+    Array<const ElemType> slice(uind start = 0)       const { return ::ZZ::slice((*this)[start], (*this)[this->size()]); } \
+    Array<const ElemType> slice(uind start, uind end) const { return ::ZZ::slice((*this)[start], (*this)[end]); } \
+    Array<ElemType>       slice(uind start = 0)             { return ::ZZ::slice((*this)[start], (*this)[this->size()]); } \
+    Array<ElemType>       slice(uind start, uind end)       { return ::ZZ::slice((*this)[start], (*this)[end]); } \
+    ElemType const& last(uind i = 0) const { return (*this)[this->size()-i-1]; } \
+    ElemType&       last(uind i = 0)       { return (*this)[this->size()-i-1]; } \
+    ElemType const& peek(uind i = 0) const { return (*this)[this->size()-i-1]; } /*alternative name to 'last'*/ \
+    ElemType&       peek(uind i = 0)       { return (*this)[this->size()-i-1]; } \
+    ElemType const& end_(uind i = 0) const { return (*this)[this->size()-i]; } \
+    ElemType&       end_(uind i = 0)       { return (*this)[this->size()-i]; } \
+    ElemType const& operator[](ReverseIndex r) const { uind i = this->size() - r.off; assert_debug(i <= this->size()); return (*this)[i]; } \
+    ElemType&       operator[](ReverseIndex r)       { uind i = this->size() - r.off; assert_debug(i <= this->size()); return (*this)[i]; }
+        // -- NOTE! ReverseIndex is defined in 'Array.ihh' together with macro symbols 'LAST' and 'END'
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

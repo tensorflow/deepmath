@@ -1,0 +1,492 @@
+//=================================================================================================
+// Operators:  (alphabet: !@#%&|/\=+-~^*?:$<>)
+
+
+##op(+- , pre, -2, neg_);
+##op(~  , pre, -2, inv_);
+
+##op(!  , pre, -4, not_);
+
+##op(<~ , inl, -5, lshift_);
+##op(~> , inl, -5, rshift_);
+##op(~>>, inl, -5, urshift_);
+
+##op(&  , inl, -10, bit_and_);
+##op(^| , inl, -11, bit_xor_);
+##op(|  , inl, -12, bit_or_);
+
+##op(*  , inl, -15, mul_);
+##op(/  , inl, -15, div_);
+##op(%  , inl, -15, mod_);
+##op(+  , inl, -16, add_);
+##op(-  , inl, -16, sub_);
+
+##op(*:  , inl, -15, f_mul_);
+##op(/:  , inl, -15, f_div_);
+##op(%:  , inl, -15, f_mod_);
+##op(+:  , inl, -16, f_add_);     // '+.' or '.+' for float version? tokenizer cannot handle yet.
+##op(-:  , inl, -16, f_sub_);
+
+##op(<  , inl, -30, lt_);
+##op(<= , inl, -30, le_);
+##op(== , inl, -30, eq_);
+##op(!= , inl, -30, ne_);
+##op(>= , inl, -30, ge_);
+##op(>  , inl, -30, gt_);
+
+##op($== , inl, -30, a_eq_);
+##op($!= , inl, -30, a_ne_);
+
+##op(&& , inl, -35, land_);
+##op(|| , inl, -36, lor_);
+
+##op(=  , inr, -50, assign_);
+##op(+= , inr, -50, assign_add_);
+##op(-= , inr, -50, assign_sub_);
+##op(*= , inr, -50, assign_mul_);
+##op(/= , inr, -50, assign_div_);
+##op(%= , inr, -50, assign_mod_);
+
+fun assign_add_(n :&Int, m :Int) { n = ^n + m };
+fun assign_sub_(n :&Int, m :Int) { n = ^n - m };
+fun assign_mul_(n :&Int, m :Int) { n = ^n * m };
+fun assign_div_(n :&Int, m :Int) { n = ^n / m };
+fun assign_mod_(n :&Int, m :Int) { n = ^n % m };
+
+
+// Vector ops:
+##op(@  , inl, 5, get_);
+##op(@= , inl, 5, set_curried_);    // -- 'vec @= n val' means '(vec @= n) val', setting nth element to 'val'
+
+fun set_curried_<A>(vec :[A], idx :Int) -> A->() {
+    fun f_(val :A) { set_(vec, idx, val) };
+    f_;
+};
+
+// Lists:
+##op(:: , inl, -40, cons_);
+
+
+//=================================================================================================
+// Basic definitions:
+
+
+rec default<T> : T = { let t : &T; ^t; };
+rec null<T> : &T = default<&T>;
+
+data List<T> = {(), (T, List<T>)};
+rec  nil<T> : List<T> = List<T>.0();
+rec  cons_<T> : (T, List<T>) -> List<T> = List<T>.1;
+
+type Maybe<T> = {(), T};
+rec none<T>  : Maybe<T>      = Maybe<T>.0 ();
+rec some_<T> : T -> Maybe<T> = Maybe<T>.1;
+
+data Hide<A> = {A};
+fun hide_<A>(vis :A) ->Hide<A> { Hide<A>.0 vis };
+fun expose_<A>(hid :Hide<A>) -> A { case_(hid, \vis{vis}) };
+fun hidden_eq_(x :Hide<Int>, y :Hide<Int>) -> Bool { eq_(expose_(x), expose_(y)) };  // -- for now
+
+rec int_min : Int = lshift_(1, 63);
+rec int_max : Int = sub_(int_min, 1);
+
+rec id_<A> : A->A = \x{x};
+
+fun curry_<A,B,C>(f_ :(A, B)->C) -> (A->B->C) {
+    \:A->B->C a{ \:B->C b{ f_(a, b) } } };
+
+type Excp_Exit = (Atom, Atom, Int, Int);   // -- '(exitcode, atom, index, size)', the three last args are optional.
+    // NOTE! This type must match the type declared in 'Vm.hh'. Exit codes are:
+    //   - normal
+    //   - cpu_lim
+    //   - mem_lim;
+    //   - rec_lim;
+    //   - null_deref
+    //   - vec_op (in which case 'atom' is one of: get, set, growby, resize)
+
+
+//=================================================================================================
+// Lists:
+
+
+rec list_empty_<T> : List<T> -> Bool = \list { case_<&List<T>, Bool>(list, \_{_1}, \_{_0}); };
+
+fun list_fold_<A, B>(iter :List<A>, init :B, reducer_ :(A,B)->B) -> B {
+    case_(iter
+    ,\      { init }
+    ,\(x,xs){ list_fold_(xs, reducer_(x, init), reducer_) }
+    );
+};
+
+
+fun list_map_<A, B>(iter :List<A>, f_ :A->B) -> List<B> {
+    case_(iter, \{ nil<B> }, \(x, xs){
+        cons_(f_(x), list_map_(xs, f_)) });
+};
+
+
+rec list_mapc_<A> : (List<A>, A->A) -> List<A> = list_map_<A,A>;    // -- type-constrained version
+
+
+fun list_filter_<A>(iter :List<A>, f_ :A->Bool) -> List<A> {
+    case_(iter, \{ nil<A> }, \(x, xs){
+        let tail = list_filter_(xs, f_);
+        cond_(f_ x, `cons_(x, tail), `tail);
+    });
+};
+
+
+fun list_zipf_<A,B,C>(aas :List<A>, bbs :List<B>, comb_ :(A, B)->C) -> List<C> {
+    case_(aas,\{ nil<C> }, \(a, as){
+        case_(bbs, \{ nil<C> }, \(b, bs){
+            cons_(comb_(a, b), list_zipf_(as, bs, comb_)) }) })
+};
+
+
+fun list_zip_<A,B>(aas :List<A>, bbs :List<B>) -> List<(A, B)> {
+    list_zipf_(aas, bbs, id_<(A,B)>); };
+
+
+fun list_len_<A>(iter :List<A>) -> Int {
+    list_fold_(iter, 0, \(_, n){ add_(n, 1) }); };
+//fun list_len_<A>(iter :List<A>) -> Int {
+//    case_(iter, `0, \(_,xs) { add_(1, list_len_ xs) }); };
+
+
+fun list_for_all_<A>(list :List<A>, pred_ :A->Bool) -> Bool {
+    case_(list
+    ,\      { _1 }
+    ,\(x,xs){ land_(pred_ x, `list_for_all_(xs, pred_)) }
+    );
+};
+
+
+fun list_apply_all_<A>(iter :List<A>, f_ :A->()) {
+    case_(iter, \{}, \(x, xs){
+        f_ x;
+        list_apply_all_(xs, f_)
+    });
+};
+
+
+fun list_reverse_<A>(xs :List<A>) -> List<A> {
+    fun rev_(xs :List<A>, acc :List<A>) -> List<A> {
+        case_(xs, \{acc}, \(y,ys){ rev_(ys, cons_(y, acc)) });
+    };
+    rev_(xs, nil<A>);
+};
+
+
+//=================================================================================================
+// Conditionals and loops:
+
+
+fun and_  (a :Bool, b :Bool) -> Bool { ite_<Bool>(a, b, _0); };
+fun or_   (a :Bool, b :Bool) -> Bool { ite_<Bool>(a, _1, b); };
+fun not_  (a :Bool)          -> Bool { ite_<Bool>(a, _0, _1); };
+fun xor_  (a :Bool, b :Bool) -> Bool { ite_<Bool>(a, not_ b, b); };
+fun equiv_(a :Bool, b :Bool) -> Bool { ite_<Bool>(a, b, not_ b); };
+
+fun cond_<T>(cond :Bool, tt :()-> T, ff :()-> T) -> T  { ite_<()->T> (cond, tt, ff )(); };
+fun if_else_(cond :Bool, tt :()->(), ff :()->()) -> () { ite_<()->()>(cond, tt, ff )(); };
+fun if_     (cond :Bool, tt :()->())                   { ite_<()->()>(cond, tt, \{})(); };
+
+fun land_(a :Bool, b :()->Bool) -> Bool { cond_<Bool>(a, b, \{_0}); };
+fun lor_ (a :Bool, b :()->Bool) -> Bool { cond_<Bool>(a, \{_1}, b); };
+
+fun while_(cond :()->Bool, body :()->()) {
+    if_(cond(), \{
+        body();
+        while_(cond, body);
+    });
+};
+
+fun repeat_(cond :()->Bool) {
+    if_(cond(), \{
+        repeat_(cond);
+    });
+};
+
+fun for_(init :(), cond :()->Bool, incr :()->(), body :()->()){
+    while_(cond, \{body(); incr()});
+};
+
+fun for_down_(n :Int, f :Int->()){
+    if_(gt_(n, 0), \{
+        let i = sub_(n, 1);
+        f i;
+        for_down_(i, f);
+    });
+};
+
+fun bool_to_int_(b :Bool) -> Int {
+    ite_<Int>(b, 1, 0);
+};
+
+fun repeat_n_<A>(n :Int, init: A, f: A->A) -> A {
+    cond_(eq_(n, 0), \{
+        init
+    },\{
+        repeat_n_(sub_(n, 1), f(init), f)
+    })
+};
+
+
+//=================================================================================================
+// Vectors:
+
+
+fun push_<T>(xs :[T], x :T) {
+    growby_<T>(xs, 1);
+    set_<T>(xs, inv_(0), x);
+};
+
+
+fun for_vec_<T>(vec :[T], f :Int->()){
+    fun iter_(i :Int) {
+        if_(lt_(i, size_<T>(vec)), \{
+            f(i);
+            iter_(add_(i, 1));
+        });
+    };
+    iter_(0);
+};
+
+
+fun vec_enum_(from :Int, upto :Int) -> [Int] {
+    let ret : [Int];
+    resize_<Int>(ret, sub_(upto, from));
+    for_vec_<Int>(ret, \i{
+        set_<Int>(ret, i, add_(from, i)); });
+    ret;
+};
+
+
+fun concat_to_<A>(list1 :[A], list2 :[A]) {
+    for_vec_<A>(list2, \i{
+        push_<A>(list1, get_<A>(list2, i)); });
+};
+
+
+fun vec_map_<A,B>(xs :[A], f :A->B) -> [B] {
+    let ys : [B];
+    resize_<B>(ys, size_<A>(xs));
+    for_vec_<A>(xs, \i{
+        set_<B>(ys, i, f(get_<A>(xs, i))); });
+    ys;
+};
+
+
+// Apply 'f' to all elements (discarding result).
+fun apply_all_<A>(xs :[A], f :A->()) {
+    for_vec_<A>(xs, \i{
+        f(get_<A>(xs, i)); });
+};
+
+
+/*
+fun list_<A>(xs :[A]) -> List<A> {
+    let list = &nil<A>;
+    for_down_(size_<A>(xs), \i{
+        assign_<List<A>>(list, cons_<A>(get_<A>(xs, i), ^list)); });
+    ^list;
+};
+*/
+
+fun list_<A>(xs :[A]) -> List<A> {
+    let list = &nil<A>;
+    for_down_(size_ xs, \i{
+        list = xs@i :: ^list; });
+    ^list;
+};
+
+
+data For_All_ = {()};  // -- just a tag; should introduce Lisp-style blocks.
+fun for_all_<A>(vec :[A], pred_ :A->Bool) -> Bool {
+    try_<Bool, For_All_>(\{
+        apply_all_(vec, \x{
+            if_(not_(pred_ x), `throw_<(),For_All_>(For_All_.0())); });
+        _1;
+    },\_{
+        _0;
+    });
+};
+
+
+/*
+fun for_all_<A>(vec :[A], pred_ :A->Bool) -> Bool {
+    let result = &_1;
+    let i = &0;
+    for_((), `and_(*result, lt_(*i, size_ vec)), `assign_(i, inc_ *i), \{
+        if_(not_(pred_(get_(vec, *i))), `assign_(result, _0)); });
+    *result;
+};
+*/
+
+fun exists_<A>(vec :[A], pred_ :A->Bool) -> Bool {
+    not_(for_all_<A>(vec, compose_(not_, pred_))); };
+
+
+fun intvec_has_(xs :[Int], n :Int) -> Bool {
+    exists_(xs, \x{ eq_(x, n) }); };
+
+
+//=================================================================================================
+// Misc:
+
+
+// Returns a 'random()' function, producing a sequence (by repeated calls) determined by 'seed0'.
+fun gen_rand_(seed0 :Int) -> (Int -> Int) {
+    rec seed : &Int = &seed0;
+    fun rand_fun_(lim :Int) -> Int {
+        let (ret, new_seed) = irand_(^seed);
+        assign_<Int>(seed, new_seed);
+        mod_(ret, lim);
+    };
+    rand_fun_;
+};
+
+
+fun min_(x :Int, y :Int) -> Int { ite_<Int>(lt_(x, y), x, y); };
+fun max_(x :Int, y :Int) -> Int { ite_<Int>(gt_(x, y), x, y); };
+
+
+fun compose_<A,B,C>(f_ :B->C, g_ :A->B) -> A->C {
+    fun h_(a :A) -> C { f_(g_ a) };
+    h_;
+};
+
+
+fun inc_(n :Int) -> Int { add_(n, 1); };
+fun dec_(n :Int) -> Int { sub_(n, 1); };
+fun is_zero_(n :Int) -> Bool { eq_(n, 0); };
+fun is_nonzero_(n :Int) -> Bool { ne_(n, 0); };
+
+fun ignore_<A, B>(_ :A, b :B) -> B { b };   // -- ignore first argument, return second
+fun starter_<A>(val :A, f_ :(A, A)->A) -> A { f_(val, default<A>) };    // -- higher-order function to enable accumulating paramter solutions.
+
+
+fun curried_lt_(n :Int) -> (Int->Bool) {
+  fun f_(m :Int) -> Bool { lt_(n, m) };
+  f_;
+};
+
+
+//=================================================================================================
+// Printing
+
+
+fun nl_(){ print_atom_ "\n"; };
+
+fun wr_vec_<A>(as :[A]) {
+    write_("[");
+    let i = &0;
+    for_((), `lt_(^i, size_(as)), `assign_(i, inc_ ^i), \{
+        if_(is_nonzero_ ^i, `write_(", "));
+        write_("", get_(as, ^i));
+    });
+    write_("]");
+};
+
+fun wr_list_<A>(list :List<A>) {
+    fun wr_tail_(tail :List<A>) {
+        case_(tail, `(), \(x, xs){
+            write_(", ", x);
+            wr_tail_ xs;
+        });
+    };
+
+    write_("{");
+    case_(list, `(), \(x, xs){
+        write_("", x);
+        wr_tail_ xs;
+    });
+    write_("}");
+};
+
+
+// Example:
+//    write_("xs=", $xs, "\n");
+//    write_("A pair:", $(xs, 42), "\n");
+##op($ , pre, -100, default_formatter_);
+
+
+fun default_formatter_<T>(x :T) -> ()->() {
+    ##if (match<T, [A]>, `wr_vec_(x),
+    ##if (match<T, List<A>>, `wr_list_(x),
+    ##if (match<T, (A,B)>, `write_("(", $ #0 x, ", ", $ #1 x, ")"),
+    ##if (match<T, (A,B,C)>, `write_("(", $ #0 x, ", ", $ #1 x, ", ", $ #2 x, ")"),
+    `write_("", x)))));
+};
+
+
+// PYTHON
+fun py_write_list_helper_<A>(list :List<A>, a_writer_ :A->()) {
+    fun wr_tail_(tail :List<A>) {
+        case_(tail, `(), \(x, xs){
+            write_(", ");
+            a_writer_ x;
+            wr_tail_ xs;
+        });
+    };
+
+    write_("[");
+    case_(list, `(), \(x, xs){
+        a_writer_ x;
+        wr_tail_ xs;
+    });
+    write_("]");
+};
+
+fun py_write_<A>(v :A) {
+    ##if (match<A, Bool>, write_(ite_(v, "True", "False")),
+    ##if (match<A, List<T>>, py_write_list_helper_(v, py_write_<T>),
+    ##if (match<A, (A0,A1)>, write_("(", `py_write_(#0 v), ", ", `py_write_(#1 v), ")"),
+    ##if (match<A, (A0,A1,A2)>, write_("(", `py_write_(#0 v), ", ", `py_write_(#1 v), ", ", `py_write_(#2 v), ")"),
+          write_("", v)))))
+};
+
+// LEGACY:
+fun dump_bool_(b :Bool) { print_atom_(ite_(b, "_1\n", "_0\n")); };
+fun dump_int_(num :Int) { print_int_ num; nl_(); };
+fun dump_int_pair_(n0 :Int, n1 :Int) { print_int_ n0; print_atom_ " "; print_int_ n1; nl_(); };
+fun dump_float_(num :Float) { print_float_ num; nl_(); };
+fun dump_atom_(text :Atom) { print_atom_ text; nl_(); };
+
+fun dump_int_vec_(xs :[Int]) {
+    fun pr(n :Int){
+        if_else_(lt_(n, size_<Int>(xs)), \{
+            print_int_ (get_<Int>(xs, n));
+            print_atom_ " ";
+            pr(add_(n, 1));
+        },\{
+            nl_();
+        });
+    };
+
+    pr(0);
+};
+
+fun dump_int_list_(xs :List<Int>) {
+    case_<List<Int>,()>(xs
+    ,\       { nl_(); }
+    ,\(y, ys){ print_int_ y; print_atom_ " "; dump_int_list_ ys; }
+    );
+};
+
+fun dump_int_pair_list_(xs :List<(Int,Int)>) {
+    case_(xs
+    ,\       { nl_(); }
+    ,\((a,b), ys){ print_atom_"("; print_int_ a; print_atom_", ";  print_int_ b; print_atom_ ") "; dump_int_pair_list_ ys; }
+    );
+};
+
+fun dump_bool_list_(xs :List<Bool>) {
+    case_<List<Bool>,()>(xs
+    ,\       { nl_(); }
+    ,\(y, ys){ print_bool_ y; print_atom_ " "; dump_bool_list_ ys; }
+    );
+};
+
+
+;; // end let-rec

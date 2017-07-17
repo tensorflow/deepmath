@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__Printing_hh
 #define ZZ__HolLight__Printing_hh
 
-#include "deepmath/zz/HolLight/Types.hh"
+#include "Types.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -29,17 +28,22 @@ using namespace std;
 extern bool pp_full_internal;
 extern bool pp_use_ansi;
 extern bool pp_show_types;
+extern bool pp_show_bound_types;
+extern bool pp_readable_eqs;
+extern bool pp_readable_nums;
 
 
 #define PP_TYPE "\x1B[31m"
 #define PP_CNST "\x1B[32m"
 #define PP_VAR  "\x1B[33m"
+#define PP_NUM  "\x1B[35m"
 #define PP_END  "\x1B[0m"
 
 
 // More readable: ($=var, #=const, `=type)
-template<> fts_macro void write_(Out& out, Type const& ty)
+template<> fts_macro void write_(Out& out, Type const& ty, Str flags)
 {
+    assert(flags.size() <= 1);
     if (pp_full_internal){
         if (ty.is_tvar()) FWrite(out) "tvar(%_)", ty.tvar();
         else              FWrite(out) "tapp(%_, %_)", ty.tcon(), ty.targs();
@@ -56,14 +60,18 @@ template<> fts_macro void write_(Out& out, Type const& ty)
                 Type from = *it++;
                 Type into = *it++;
                 assert(!it);
-                FWrite(out) "(%_->%_)", from, into;
+                if (flags.size() == 1 && flags[0] == 'p') out += '(';
+                FWrite(out) "%p->%_", from, into;
+                if (flags.size() == 1 && flags[0] == 'p') out += ')';
             }else{
                 if (ty.targs().empty()) FWrite(out) "%_", ty.tcon();
-                else                    FWrite(out) "%_<%_>", ty.tcon(), ty.targs();    // -- this is not HOL-Light syntax
+                else                    FWrite(out) "%_<%n>", ty.tcon(), ty.targs();    // -- this is not HOL-Light syntax
             }
         }
     }
 }
+
+template<> fts_macro void write_(Out& out, Type const& ty) { write_(out, ty, Str(empty_)); }
 
 
 template<> fts_macro void write_(Out& out, Term const& tm)
@@ -84,6 +92,36 @@ template<> fts_macro void write_(Out& out, Term const& tm)
                 && tm.fun().fun().cnst() == cnst_eq;
         };
 
+        auto isNum = [](Term tm) {
+            return tm.is_comb()
+                && tm.fun().is_cnst()
+                && tm.fun().cnst() == cnst_NUMERAL;
+        };
+
+        function<bool(Term, uint64&)> getNum = [&getNum](Term tm, uint64& result) -> bool {
+            if (tm.is_cnst()){
+                if (tm.cnst() != cnst__0) return false;
+                result = 0;
+                return true;
+            }else{
+                if (!tm.is_comb() || !tm.fun().is_cnst()) return false;
+                if (tm.fun().cnst() == cnst_NUMERAL)
+                    return getNum(tm.arg(), result);
+                else if (tm.fun().cnst() == cnst_BIT0){
+                    if (!getNum(tm.arg(), result)) return false;
+                    if (2 * result < result) return false;
+                    result *= 2;
+                    return true;
+                }else if (tm.fun().cnst() == cnst_BIT1){
+                    if (!getNum(tm.arg(), result)) return false;
+                    if (2 * result + 1 < result) return false;
+                    result = 2 * result + 1;
+                    return true;
+                }else
+                    return false;
+            }
+        };
+
         if (tm.is_var()){
             if (pp_use_ansi) FWrite(out) PP_VAR  "%_" PP_END, tm.var();
             else             FWrite(out) "%_", tm.var();
@@ -91,12 +129,24 @@ template<> fts_macro void write_(Out& out, Term const& tm)
             if (pp_use_ansi) FWrite(out) PP_CNST "%_" PP_END, tm.cnst();
             else             FWrite(out) "%_", tm.cnst();
         }else if (tm.is_comb()){
-            if (isEqTerm(tm))
+            if (pp_readable_eqs && isEqTerm(tm))
                 FWrite(out) "[%_ = %_]", tm.fun().arg(), tm.arg();
-            else
+            else if (pp_readable_nums && isNum(tm)){
+                uint64 val;
+                if (getNum(tm, val)){
+                    if (pp_use_ansi) FWrite(out) PP_NUM "%_" PP_END, val;
+                    else             FWrite(out)        "%_"       , val;
+                }
+                else FWrite(out) "(%_ %_)", tm.fun(), tm.arg();
+            }else
                 FWrite(out) "(%_ %_)", tm.fun(), tm.arg();
-        }else
-            FWrite(out) "(\\%_. %_)", tm.avar(), tm.aterm();
+        }else{
+            if (!pp_show_types && pp_show_bound_types){
+                if (pp_use_ansi) FWrite(out) "(\\%_ " PP_TYPE ":%_" PP_END ". %_)", tm.avar(), tm.type(), tm.aterm();
+                else             FWrite(out) "(\\%_ :%_. %_)"                     , tm.avar(), tm.type(), tm.aterm();
+            }else
+                FWrite(out) "(\\%_. %_)", tm.avar(), tm.aterm();
+        }
     }
 
     if (pp_show_types){

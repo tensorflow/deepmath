@@ -12,7 +12,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/CmdLine/CmdLine.hh"
+#include "CmdLine.hh"
 
 
 namespace ZZ {
@@ -38,11 +38,11 @@ ZZ_Finalizer(cli_clear, -10050) {
 }
 
 
-#include "deepmath/zz/CmdLine/CmdLine_UnivType.icc"
-#include "deepmath/zz/CmdLine/CmdLine_Parse.icc"
-#include "deepmath/zz/CmdLine/CmdLine_Match.icc"
-#include "deepmath/zz/CmdLine/CmdLine_Debug.icc"
-#include "deepmath/zz/CmdLine/CmdLine_CLI.icc"
+#include "CmdLine_UnivType.icc"
+#include "CmdLine_Parse.icc"
+#include "CmdLine_Match.icc"
+#include "CmdLine_Debug.icc"
+#include "CmdLine_CLI.icc"
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

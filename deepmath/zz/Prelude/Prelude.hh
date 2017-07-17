@@ -44,11 +44,15 @@ Defines that control compilation:
 // Include core of standard C++ library:
 
 
-#if !defined(_MSC_VER)
-  #ifndef __STDC_LIMIT_MACROS
-    #define __STDC_LIMIT_MACROS
+#ifdef GOOGLE_CODE
+  #include /*no-mangling*/ "base/integral_types.h"
+#else
+  #if !defined(_MSC_VER)
+    #ifndef __STDC_LIMIT_MACROS
+      #define __STDC_LIMIT_MACROS
+    #endif
+    #include <stdint.h>
   #endif
-  #include <stdint.h>
 #endif
 
 #if defined(__BAZEL_BUILD__)
@@ -124,34 +128,34 @@ Defines that control compilation:
 // Include ZZ prelude:
 
 
-#include "deepmath/zz/Prelude/Init.ihh"
-#include "deepmath/zz/Prelude/Macros.ihh"
-#include "deepmath/zz/Prelude/CompilerExtensions.ihh"
-#include "deepmath/zz/Prelude/PrimitiveTypes.ihh"
-#include "deepmath/zz/Prelude/Traits.ihh"
-#include "deepmath/zz/Prelude/SwapMoveCopy.ihh"
-#include "deepmath/zz/Prelude/Compare.ihh"
-#include "deepmath/zz/Prelude/LBool.ihh"
-#include "deepmath/zz/Prelude/Threads.ihh"
-#include "deepmath/zz/Prelude/Signals.ihh"
-#include "deepmath/zz/Prelude/Mem.ihh"
-#include "deepmath/zz/Prelude/Hash.ihh"
-#include "deepmath/zz/Prelude/Tuples.ihh"
-#include "deepmath/zz/Prelude/Array.ihh"
-#include "deepmath/zz/Prelude/Vec.ihh"
-#include "deepmath/zz/Prelude/VecAlgo.ihh"
-#include "deepmath/zz/Prelude/Streams.ihh"
-#include "deepmath/zz/Prelude/String.ihh"
-#include "deepmath/zz/Prelude/Exceptions.ihh"
-#include "deepmath/zz/Prelude/File.ihh"
-#include "deepmath/zz/Prelude/Resources.ihh"
-#include "deepmath/zz/Prelude/Console.ihh"
-#include "deepmath/zz/Prelude/Utility.ihh"
-#include "deepmath/zz/Prelude/Format.ihh"
-#include "deepmath/zz/Prelude/Profile.ihh"
+#include "Init.ihh"
+#include "Macros.ihh"
+#include "CompilerExtensions.ihh"
+#include "PrimitiveTypes.ihh"
+#include "Traits.ihh"
+#include "SwapMoveCopy.ihh"
+#include "Compare.ihh"
+#include "LBool.ihh"
+#include "Threads.ihh"
+#include "Signals.ihh"
+#include "Mem.ihh"
+#include "Hash.ihh"
+#include "Tuples.ihh"
+#include "Array.ihh"
+#include "Vec.ihh"
+#include "VecAlgo.ihh"
+#include "Streams.ihh"
+#include "String.ihh"
+#include "Exceptions.ihh"
+#include "File.ihh"
+#include "Resources.ihh"
+#include "Console.ihh"
+#include "Utility.ihh"
+#include "Format.ihh"
+#include "Profile.ihh"
 #if !defined(__BAZEL_BUILD__)
-  #include "ScopeGuard.ihh"
-  #include "ScopedPtr.ihh"
+#include "ScopeGuard.ihh"
+#include "ScopedPtr.ihh"
 #endif
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

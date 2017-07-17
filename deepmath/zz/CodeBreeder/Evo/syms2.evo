@@ -1,0 +1,21 @@
+let syms = (
+    case_<List<Int>, Bool>,
+    case_<List<Int>, Int>,
+    case_<List<Int>, List<Int>>,
+
+    cond_<Int>,
+    cond_<List<Int>>,
+
+    _0, _1,
+    equiv_, land_, lor_, not_,
+
+    0, 1,
+    neg_,
+    add_, sub_, mul_, div_, mod_,
+    eq_, gt_,
+
+    inc_, dec_, is_zero_, max_, min_,
+
+    nil<Int>,
+    cons_<Int>,
+);

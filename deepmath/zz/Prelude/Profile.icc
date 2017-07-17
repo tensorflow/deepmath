@@ -13,6 +13,8 @@
 namespace ZZ {
 using namespace std;
 
+#define SORT_OUTPUT
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
@@ -53,6 +55,7 @@ void dumpProfileData()
                 all_zero = false;
 
         if (!all_zero){
+          #if !defined(SORT_OUTPUT)
             // Reverse list
             PTimer* prev = NULL;
             PTimer* next = NULL;
@@ -62,6 +65,20 @@ void dumpProfileData()
                 prev = t;
             }
             ptimer_list = prev;
+          #else
+            uint size = 0;
+            for (PTimer* t = ptimer_list; t != NULL; t = t->next) size++;
+            PTimer* data = new PTimer[size];
+            size = 0;
+            for (PTimer* t = ptimer_list; t != NULL; t = t->next) data[size++] = *t;
+
+            for (uint i = 0; i < size-1; i++){
+                uint best_i = i;
+                for (uint j = i+1; j < size; j++)
+                    if (strcmp(data[j].timer_name, data[best_i].timer_name) < 0) best_i = j;
+                swp(data[i], data[best_i]);
+            }
+          #endif
 
             NewLine;
             Write "\a/";
@@ -79,7 +96,12 @@ void dumpProfileData()
 
             double to_sec     = (real_T1 - real_T0) / (rdtsc_T1 - rdtsc_T0);
             double to_percent = 100.0 / (rdtsc_T1 - rdtsc_T0);
+          #if !defined(SORT_OUTPUT)
             for (PTimer* t = ptimer_list; t != NULL; t = t->next){
+          #else
+            for (uint i = 0; i < size; i++){
+                PTimer* t = &data[i];
+          #endif
                 if (t->acc_time == 0) continue;
                 Write "%_: ", t->timer_name;
                 for (uint i = (uint)strlen(t->timer_name); i < max_len; i++) Write " ";
@@ -87,6 +109,9 @@ void dumpProfileData()
             }
 
             WriteLn "\a/_______________________________________________________________________________\a/";
+          #if defined(SORT_OUTPUT)
+            delete [] data;
+          #endif
         }
     }
 }

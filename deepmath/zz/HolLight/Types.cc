@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/Types.hh"
+#include "Types.hh"
 
 namespace ZZ {
 using namespace std;
@@ -35,20 +35,28 @@ Cnst cnst_equiv;
 Cnst cnst_hilb;
 Cnst cnst_lam;
 Cnst cnst_iand;
+Cnst cnst_NUMERAL;
+Cnst cnst_BIT0;
+Cnst cnst_BIT1;
+Cnst cnst__0;
 
 
 ZZ_Initializer(predefined_atoms, 0) {
-    tcon_bool   = TCon("bool");
-    tcon_fun    = TCon("fun");
-    tcon_ind    = TCon("ind");
-    type_bool   = Type(tcon_bool, List<Type>());
-    type_alpha  = Type(TVar("A"));
-    type_booleq = Type(tcon_fun, mkList({ type_bool, Type(tcon_fun, mkList({type_bool, type_bool})) }));
-    cnst_eq     = Cnst("=");
-    cnst_equiv  = Cnst("<=>");
-    cnst_hilb   = Cnst("@");
-    cnst_lam    = Cnst("\\");        // -- NOTE! This one is not defined in the ML kernel.
-    cnst_iand   = Cnst("`&");        // -- Internal constant to represent pair of conclusions
+    tcon_bool    = TCon("bool");
+    tcon_fun     = TCon("fun");
+    tcon_ind     = TCon("ind");
+    type_bool    = Type(tcon_bool, List<Type>());
+    type_alpha   = Type(TVar("A"));
+    type_booleq  = Type(tcon_fun, mkList({ type_bool, Type(tcon_fun, mkList({type_bool, type_bool})) }));
+    cnst_eq      = Cnst("=");
+    cnst_equiv   = Cnst("<=>");
+    cnst_hilb    = Cnst("@");
+    cnst_lam     = Cnst("\\");        // -- NOTE! This one is not defined in the ML kernel.
+    cnst_iand    = Cnst("`&");        // -- Internal constant to represent pair of conclusions
+    cnst_NUMERAL = Cnst("NUMERAL");
+    cnst_BIT0    = Cnst("BIT0");
+    cnst_BIT1    = Cnst("BIT1");
+    cnst__0      = Cnst("_0");
 }
 
 
@@ -92,7 +100,7 @@ Var Term::lambdaVar(uint idx) {
     if (!memo(idx)){
         char buf[32];
         sprintf(buf, "`%u", idx);   // -- backtick is reserved (unused symbol in the proof-logs); lambda variables are `0, `1, `2...
-        for (char* p = buf+1; *p; p++) *p += 'a' - '0';   // -- change `0 to `a, `1 to `b etc.
+        //for (char* p = buf+1; *p; p++) *p += 'a' - '0';   // -- change `0 to `a, `1 to `b etc.
         memo[idx] = Var(buf);
     }
     return memo[idx];

@@ -4,30 +4,30 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Defines standard names for integer types of various sizes.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| This file defines:
-//| 
+//|
 //|   uint, ulong, uchar, schar (signed char), cchar (const char), ind, uind
 //|   {int/uint}{8,16,32}, intp, uintp
-//| 
+//|
 //| The types are intentionally NOT within the 'ZZ' namespace. If they were, opening that
 //| namespace would lead to ambiguities with equivalent definitions in the standard
 //| header files (which are common).
-//| 
+//|
 //| An 'ind' is an integer used for indexing into container classes (vectors, arrays etc.).
 //| The default size is 32 bits to preserve memory, but if 'ZZ_BIG_MODE' is defined, 'ind's are
 //| 64-bit.
-//| 
+//|
 //| An 'intp' is an integer the size of a pointer (same as 'intptr_t' in 'stdint.h').
-//| 
+//|
 //| The following symbols may also be defined:
-//| 
+//|
 //|   ZZ_LP64                          -- Defined if pointers are 64-bit
-//|   ZZ_BYTE_ORDER_BIG_ENDIAN         -- Defined if system is big endian (else we assume 
+//|   ZZ_BYTE_ORDER_BIG_ENDIAN         -- Defined if system is big endian (else we assume
 //|                                       little endian).
 //|   IND_MIN, IND_MAX, UIND_MAX       -- Limits for the index types 'ind' and 'uind'.
 //|   INT64_MIN, INT64_MAX, UINT64_MAX -- Limits for 64-bit integers.
@@ -81,14 +81,16 @@ typedef const char     cchar;
 
 #if !defined(_MSC_VER)
   // Shorten names for convenience:
-  typedef signed char   int8;
-  typedef unsigned char uint8;
-  typedef int16_t   int16;
-  typedef uint16_t  uint16;
-  typedef int32_t   int32;
-  typedef uint32_t  uint32;
-  typedef int64_t   int64;
-  typedef uint64_t  uint64;
+  #if !defined(GOOGLE_CODE)
+    typedef signed char   int8;
+    typedef unsigned char uint8;
+    typedef int16_t   int16;
+    typedef uint16_t  uint16;
+    typedef int32_t   int32;
+    typedef uint32_t  uint32;
+    typedef int64_t   int64;
+    typedef uint64_t  uint64;
+  #endif
   typedef intptr_t  intp;
   typedef uintptr_t uintp;
   #define INTP_MIN  INTPTR_MIN

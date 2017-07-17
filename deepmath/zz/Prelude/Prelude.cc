@@ -11,18 +11,18 @@
 //|
 //|________________________________________________________________________________________________
 
-#include "deepmath/zz/Prelude/Prelude.hh"
+#include ZZ_Prelude_hh
 
 // Implementation:
-#include "deepmath/zz/Prelude/Macros.icc"
-#include "deepmath/zz/Prelude/Mem.icc"
-#include "deepmath/zz/Prelude/Hash.icc"
-#include "deepmath/zz/Prelude/Streams.icc"
-#include "deepmath/zz/Prelude/Resources.icc"
-#include "deepmath/zz/Prelude/File.icc"
-#include "deepmath/zz/Prelude/Console.icc"
-#include "deepmath/zz/Prelude/Utility.icc"
-#include "deepmath/zz/Prelude/Init.icc"
-#include "deepmath/zz/Prelude/Format.icc"
-#include "deepmath/zz/Prelude/Profile.icc"
-#include "deepmath/zz/Prelude/Signals.icc"
+#include "Macros.icc"
+#include "Mem.icc"
+#include "Hash.icc"
+#include "Streams.icc"
+#include "Resources.icc"
+#include "File.icc"
+#include "Console.icc"
+#include "Utility.icc"
+#include "Init.icc"
+#include "Format.icc"
+#include "Profile.icc"
+#include "Signals.icc"

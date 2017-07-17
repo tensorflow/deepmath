@@ -38,7 +38,7 @@ using namespace std;
 
 
 #if defined(ZZ_USE_STL)
-#include "deepmath/zz/Prelude/Vec_stl.ihh"
+#include "Vec_stl.ihh"
 #else
 
 
@@ -87,6 +87,8 @@ public:
 
     Vec(Vec<T>&& other) { memcpy(this, &other, sizeof(*this)); other.zero(); }
     Vec<T>& operator=(Vec<T>&& other) { other.moveTo(*this); return *this; }
+
+    explicit operator bool() const { return true; }     // -- there are no null-vectors; this is needed for meta programming.
   #endif
 
   //________________________________________
@@ -102,10 +104,6 @@ public:
     const T*       base    () const                     { return this->data; }
     T*             base    ()                           { return this->data; }
     Array<T>       release ()                           { T* ret = this->data; uind sz = this->sz; this->data = NULL; this->sz = 0; this->cap = 0; return Array<T>(ret, sz); }
-    Array<const T> slice   (uind start = 0)       const { return ::ZZ::slice(this->data[start], this->data[this->sz]); }
-    Array<const T> slice   (uind start, uind end) const { return ::ZZ::slice(this->data[start], this->data[end]); }
-    Array<T>       slice   (uind start = 0)             { return ::ZZ::slice(this->data[start], this->data[this->sz]); }
-    Array<T>       slice   (uind start, uind end)       { return ::ZZ::slice(this->data[start], this->data[end]); }
     uind           capacity() const                     { return this->cap; }
 
   //________________________________________
@@ -129,19 +127,7 @@ public:
     void     push  ()                 { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T      ; this->sz++; }
     void     push  (const T& elem)    { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T(elem); this->sz++; }
     void     pushQ (const T& elem)    { assert_debug(this->sz < this->cap); new (&this->data[this->sz]) T(elem); this->sz++; } // -- "quick" push: assumes there is enough memory reserved
-    const T& last  (uind i = 0) const { return this->data[this->sz-i-1]; }
-    T&       last  (uind i = 0)       { return this->data[this->sz-i-1]; }
-    const T& peek  (uind i = 0) const { return last(i); }   // -- alternative name
-    T&       peek  (uind i = 0)       { return last(i); }
-    const T& end_  (uind i = 0) const { return this->data[this->sz-i]; }
-    T&       end_  (uind i = 0)       { return this->data[this->sz-i]; }
-
   #if (__cplusplus >= 201103L)
-    const T* end   (uind i = 0) const { return &this->data[this->sz-i]; }
-    T*       end   (uind i = 0)       { return &this->data[this->sz-i]; }
-    const T* begin () const           { return &this->data[0]; }
-    T*       begin ()                 { return &this->data[0]; }
-
     void     push  (T&& elem)         { if (this->sz >= this->cap) reserveQ(this->sz+1); new (&this->data[this->sz]) T(move(elem)); this->sz++; }
   #endif
 
@@ -154,8 +140,7 @@ public:
     T&       get       (uind i)               { assert_debug(i <= this->sz); return this->data[i]; }
     T&       operator()(uind i)               { growTo(i+1);      return this->data[i]; } // -- like operator [], but grow Vector if needed
     T&       operator()(uind i, const T& pad) { growTo(i+1, pad); return this->data[i]; }
-    const T& operator[](ReverseIndex r) const { uind i = this->sz - r.off; assert_debug(i <= this->sz); return this->data[i]; }
-    T&       operator[](ReverseIndex r)       { uind i = this->sz - r.off; assert_debug(i <= this->sz); return this->data[i]; }
+    Std_Array_Funcs(T);
 
   //________________________________________
   //  Copying/moving:

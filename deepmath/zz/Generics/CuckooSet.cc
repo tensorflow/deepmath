@@ -1,5 +1,5 @@
 #include ZZ_Prelude_hh
-#include "deepmath/zz/Generics/CuckooSet.hh"
+#include "CuckooSet.hh"
 
 namespace ZZ {
 using namespace std;

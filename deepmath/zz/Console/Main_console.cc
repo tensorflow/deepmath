@@ -1,5 +1,5 @@
 #include ZZ_Prelude_hh
-#include "deepmath/zz/Console/ConsoleStd.hh"
+#include "ConsoleStd.hh"
 
 using namespace ZZ;
 

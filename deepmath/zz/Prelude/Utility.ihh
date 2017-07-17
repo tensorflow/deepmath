@@ -81,11 +81,11 @@ bool        readFile(String filename, Vec<char>& out, bool add_null = false);   
 Array<char> readFile(String filename, bool add_null = false);
 bool        writeFile(String filename, Array<char> data);
 
-void        readLine(In&   in, Vec<char>& out_text);     // }
-void        readLine(File& in, Vec<char>& out_text);     // }- Clears 'out_text'. No '\0' added at the end.
-void        readLine(FILE* in, Vec<char>& out_text);     // }
+void        readLine(In&   in, Vec<char>& out_text);    // }
+void        readLine(File& in, Vec<char>& out_text);    // }- Clears 'out_text'. No '\0' added at the end.
+void        readLine(FILE* in, Vec<char>& out_text);    // }
 
-int         tmpFile(cchar* prefix, String& out_name);
+int         tmpFile(cchar* prefix, String& out_name);   // -- returns file descriptor
 
 String      dateAndTimeText();
 
@@ -944,6 +944,11 @@ macro bool moreThanKBitsSet(uint64 word, uint k)
 template <class T>
 inline void memClear(T& t) {
     memset(&t, 0, sizeof(T)); }
+
+
+template <class T>
+inline void memCpy(T& dst, T const& src) {
+    memcpy(&dst, &src, sizeof(T)); }
 
 
 template <class U, class T>

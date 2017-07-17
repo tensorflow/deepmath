@@ -15,7 +15,6 @@ limitations under the License.
 
 #ifndef ZZ__HolLight__Checker_hh
 #define ZZ__HolLight__Checker_hh
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

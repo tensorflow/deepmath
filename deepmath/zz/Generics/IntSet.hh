@@ -23,9 +23,8 @@
 #ifndef ZZ__Generics__IntSet_h
 #define ZZ__Generics__IntSet_h
 
-#include "deepmath/zz/Generics/IntMap.hh"
+#include "IntMap.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -127,7 +126,7 @@ public:
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
-// IntSeen -- Most compact set representation (just a bit-vecror):
+// IntSeen -- Most compact set representation (just a bit-vector):
 
 
 template<class Key_, class Key2Index = MkIndex_default<Key_> >
@@ -141,6 +140,7 @@ public:
     Key2Index index;            // The indexing object. Overloads '()' operator.
 
     IntSeen(Key2Index index_ = Key2Index()) : index(index_) {}
+    IntSeen(Tag_copy, IntSeen const& s) : bitvec(copy_, s.bitvec) {}
 
     void reserve(uind cap) { bitvec.growTo((cap + 31) >> 5, 0); }
     void clear  (bool dispose = false) { bitvec.clear(dispose); }
@@ -151,6 +151,14 @@ public:
     bool add    (const Key_& key);          // -- Add element unless already in set. Returns TRUE if element already existed.
     bool has    (const Key_& key) const;    // -- Check for existence of element.
     bool exclude(const Key_& key);          // -- Exclude element if exists (returns TRUE if found). Element is still in 'elems' (lazy deletion) until 'compact()' is called, but 'has()' will return FALSE.
+
+  #if 0 // (__cplusplus >= 201103L)   // -- Google does not allow 'return move(...)'
+    Vec<uind> list() const {  // -- returns the set a vector of 'Index's, not 'Key's.
+        Vec<uind> is;
+        for (uind i = 0; i < bitvec.size() * 32; i++)
+            if (bitvec[i>>5] & (1 << (i&31))) is.push(i);
+        return move(is); }
+  #endif
 };
 
 

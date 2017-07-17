@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/HolLight/ProofStore.hh"
-#include "deepmath/zz/HolLight/Parser.hh"
-#include "deepmath/zz/HolLight/RuleApply.hh"
+#include "ProofStore.hh"
+#include "Parser.hh"
+#include "RuleApply.hh"
 
 namespace ZZ {
 using namespace std;

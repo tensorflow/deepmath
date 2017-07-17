@@ -13,7 +13,7 @@
 //|________________________________________________________________________________________________
 
 #include ZZ_Prelude_hh
-#include "deepmath/zz/Console/Console.hh"
+#include "Console.hh"
 #include <termios.h>
 
 namespace ZZ {
@@ -28,6 +28,9 @@ static bool            console_active = false;
 static bool            first_init = true;
 static struct termios  saved_attributes;
 static Vec<Vec<AChar>> old_con;
+
+static uint cursor_row = UINT_MAX;
+static uint cursor_col = UINT_MAX;
 
 Vec<Vec<AChar>> con;
 
@@ -131,6 +134,28 @@ void con_close()
 }
 
 
+void con_showCursor(uint row, uint col)
+{
+    if ((int)row < 0) row = con_rows() - int(~row);
+    if ((int)col < 0) col = con_cols() - int(~col);     // -- allow for '~n' to mean 'con_cols() - n'
+    cursor_row = row;
+    cursor_col = col;
+
+    String out;
+    FWrite(out) "\x1b[%_;%_H", row+1, col+1;
+    FWrite(out) "\x1B[?25h";
+    write_safe(STDOUT_FILENO, out.base(), out.size());
+}
+
+
+void con_hideCursor()
+{
+    write_safe(STDOUT_FILENO, "\x1B[?25l", 6);
+    cursor_row = UINT_MAX;
+    cursor_col = UINT_MAX;
+}
+
+
 void con_init()
 {
     struct termios tattr;
@@ -169,21 +194,7 @@ void con_init()
     write_safe(STDOUT_FILENO, tmp.base(), tmp.size());
 
     console_active = true;
-}
-
-
-void con_showCursor(uint row, uint col)
-{
-    String out;
-    FWrite(out) "\x1b[%_;%_H", row+1, col+1;
-    FWrite(out) "\x1B[?25h";
-    write_safe(STDOUT_FILENO, out.base(), out.size());
-}
-
-
-void con_hideCursor()
-{
-    write_safe(STDOUT_FILENO, "\x1B[?25l", 6);
+    con_hideCursor();
 }
 
 
@@ -314,6 +325,9 @@ void con_redraw()
 
     FWrite(out) "\x1b[0m" "\x1b[%_;1H", (uint)con_rows();   // -- position cursor at bottom in case CTRL-C is pressed
     write_safe(STDOUT_FILENO, out.base(), out.size());
+
+    if (cursor_row != UINT_MAX)
+        con_showCursor(cursor_row, cursor_col);
 }
 
 

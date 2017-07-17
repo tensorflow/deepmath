@@ -4,14 +4,14 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Minimal support for traits.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //| Boost defines a plethora of traits in a very complicated manner. I choose to give up on this
-//| approach and just define the bare minimum I can survive with. 
-//| 
+//| approach and just define the bare minimum I can survive with.
+//|
 //| Some non-trait related meta-programming is also included in this file.
 //|________________________________________________________________________________________________
 
@@ -77,6 +77,10 @@ const struct Tag_empty { Tag_empty (){} } empty_;
 
 const struct Tag_internal { Tag_internal (){} } internal_;
     // -- don't use this constructor, it is really internal
+
+const struct Tag_add { Tag_add (){} } add_;
+const struct Tag_del { Tag_del (){} } del_;
+    // -- for copy-and-modify constructors
 
 struct Dummy_size_ {};
 typedef Boxed<uint, Dummy_size_> Size_;

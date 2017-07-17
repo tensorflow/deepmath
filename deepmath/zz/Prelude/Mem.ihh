@@ -74,9 +74,9 @@ template<class T> macro void xfree(T* ptr) {
 // Allocation Strategies:
 
 
-#include "deepmath/zz/Prelude/Mem_StackAlloc.ihh"
-#include "deepmath/zz/Prelude/Mem_UniAlloc.ihh"
-#include "deepmath/zz/Prelude/Mem_SlimAlloc.ihh"
+#include "Mem_StackAlloc.ihh"
+#include "Mem_UniAlloc.ihh"
+#include "Mem_SlimAlloc.ihh"
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

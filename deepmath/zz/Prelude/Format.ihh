@@ -158,7 +158,7 @@ template<> fts_macro void write_(Out& out, const int64&  num) { printInt (out, n
 template<> fts_macro void write_(Out& out, const int32&  num) { printInt (out, num); }
 template<> fts_macro void write_(Out& out, const int16&  num) { printInt (out, num); }
 
-#if defined(__APPLE__) && defined(ZZ_LP64)
+#if (defined(__APPLE__) && defined(ZZ_LP64)) || defined(GOOGLE_CODE)
 template<> fts_macro void write_(Out& out, const unsigned long& num) { printUInt(out, (uint64)num); }
 template<> fts_macro void write_(Out& out, const long&          num) { printInt (out, (int64)num); }
 #endif
@@ -449,10 +449,9 @@ macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0
 #define FFNewLine(out) out += NL
 
 #if defined(__GNUC__) || defined(sun)
-    #define Dump(args...) std_out |= formatDumpArgs(#args).c_str(), args
-    String formatDumpArgs(cchar* text);
-    #define EDump(args...) std_err |= formatDumpArgs(#args).c_str(), args
-    String formatDumpArgs(cchar* text);
+    #define Dump(args...) std_out |= formatDumpArgs(__FILE__, __LINE__, #args).c_str(), args
+    #define EDump(args...) std_err |= formatDumpArgs(__FILE__, __LINE__, #args).c_str(), args
+    String formatDumpArgs(cchar* file, int line, cchar* text);
 #endif
 
 
@@ -460,8 +459,8 @@ macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0
 // Miscellaneous:
 
 
-template<class STR, class T>
-void joiner(STR sep, const Vec<T>& fields, Out& out = std_out)
+template<class STR, class VEC>
+void joiner(const STR& sep, const VEC& fields, Out& out = std_out)
 {
     if (fields.size() == 0)
         return;
@@ -473,20 +472,19 @@ void joiner(STR sep, const Vec<T>& fields, Out& out = std_out)
     }
 }
 
-
-template<class STR, class T>
+template<class STR, class VEC>
 struct Join {
-    STR    const& sep;
-    Vec<T> const& elems;
-    Join(STR const& sep, Vec<T> const& elems) : sep(sep), elems(elems) {}
+    STR const& sep;
+    VEC const& elems;
+    Join(STR const& sep, VEC const& elems) : sep(sep), elems(elems) {}
 };
 
 
-template<class STR, class T>
-inline Join<STR,T> join(STR const& sep, Vec<T> const& elems){
-    return Join<STR,T>(sep, elems); }
+template<class STR, class VEC>
+inline Join<STR,VEC> join(STR const& sep, VEC const& elems){
+    return Join<STR,VEC>(sep, elems); }
 
-template<class STR, class T> macro void write_(Out& out, const Join<STR,T>& v) {
+template<class STR, class VEC> macro void write_(Out& out, const Join<STR,VEC>& v) {
     joiner(v.sep, v.elems, out); }
 
 

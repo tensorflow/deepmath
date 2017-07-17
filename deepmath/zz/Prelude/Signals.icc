@@ -62,6 +62,7 @@ extern "C" void interruptHandler(int signum)
 #endif
 {
     catchInterrupt(SIG_DFL);
+    suppress_profile_output = true;     // -- program may have been interrupted in an inconsistent profiling state
 
     if (!silent_interrupt){
         char buf[64];

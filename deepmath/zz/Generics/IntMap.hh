@@ -14,7 +14,6 @@
 
 #ifndef ZZ__Generics__IntMap_h
 #define ZZ__Generics__IntMap_h
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

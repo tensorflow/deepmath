@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef ZZ__HolLight__ProofStore_hh
 #define ZZ__HolLight__ProofStore_hh
 
-#include "deepmath/zz/Generics/IntSet.hh"
-#include "deepmath/zz/HolLight/ParserTypes.hh"
+#include "zz/Generics/IntSet.hh"
+#include "ParserTypes.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -149,7 +148,7 @@ public:
 
     void evalLine(line_t n) { translateArgs(n); }
     Type evalType(ty_t idx);
-    Term evalTerm(th_t idx);
+    Term evalTerm(tm_t idx);
     Thm  evalThm (th_t idx);
 };
 

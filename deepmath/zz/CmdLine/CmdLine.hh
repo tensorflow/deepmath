@@ -24,7 +24,6 @@
 
 #ifndef ZZ__CmdLine__CmdLine_hh
 #define ZZ__CmdLine__CmdLine_hh
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

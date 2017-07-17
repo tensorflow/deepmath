@@ -1,0 +1,15 @@
+#ifndef ZZ__HolLight__Train_EqChains_hh
+#define ZZ__HolLight__Train_EqChains_hh
+namespace ZZ {
+using namespace std;
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+void extractEqChains(String input_file);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+}
+#endif

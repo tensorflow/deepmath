@@ -22,7 +22,6 @@
 
 #ifndef ZZ__Generics__Map_h
 #define ZZ__Generics__Map_h
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -61,6 +60,9 @@ public:
     Map(Hash_ p)           : param(p) { init(1);   }
     Map(uind cap, Hash_ p) : param(p) { init(cap); }
    ~Map() { dispose(); }
+
+    Map(Map&& other) : param() { init(1); other.moveTo(*this); }
+    Map& operator=(Map&& other) { other.moveTo(*this); return *this; }
 
     void setParam(Hash_ p) { param = p; }       // -- If used, it must be called once before any hash operation is performed.
     void moveTo(Map& dst);

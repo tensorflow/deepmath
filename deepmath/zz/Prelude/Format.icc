@@ -4,7 +4,7 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Formating functions for the 'Out' class.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
@@ -592,11 +592,12 @@ void writeAligned(Out& out, const String& text, Str align)
 
 
 #if defined(__GNUC__) || defined(sun)
-String formatDumpArgs(cchar* text)
+String formatDumpArgs(cchar* file, int line, cchar* text)
 {
     String   result;
     Vec<Str> ns;
 
+    result += "`` [", file, ": ", line, "]  ";
     splitArray(slize(text), ",", ns);
     for (uind i = 0; i < ns.size(); i++){
         if (i > 0) result += ' ', ' ';

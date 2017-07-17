@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef ZZ__HolLight__Types_hh
 #define ZZ__HolLight__Types_hh
 
-#include "deepmath/zz/HolLight/Hashing.hh"
-#include "deepmath/zz/HolLight/List.hh"
+#include "Hashing.hh"
+#include "List.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 
@@ -63,6 +62,10 @@ extern Cnst cnst_equiv;   // = Cnst("<=>")
 extern Cnst cnst_hilb;    // = Cnst("@")
 extern Cnst cnst_lam;     // = Cnst("\\")
 extern Cnst cnst_iand;    // = Cnst("`&")
+extern Cnst cnst_NUMERAL; // = Cnst("NUMERAL");
+extern Cnst cnst_BIT0;    // = Cnst("BIT0");
+extern Cnst cnst_BIT1;    // = Cnst("BIT1");
+extern Cnst cnst__0;      // = Cnst("_0");
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -235,6 +238,7 @@ Make_IdBase_MkIndex(Term);
 
 struct ThmData {
     id_t data[2];
+    id_t proof;
 };
 template<> struct Hash_default<ThmData> : Hash_mem<ThmData> {};
 
@@ -245,10 +249,11 @@ struct Thm : Composite<ThmData> {
     Thm() : P() {}
 
 #if !defined(OPAQUE_HOL_TYPES)
-    explicit Thm(Term concl) : P({ThmData{{id_NULL, +concl}}}) {}
-    explicit Thm(SSet<Term> hyps, Term concl) : P({ThmData{{+hyps, +concl}}}) {}
-    SSet<Term> hyps () const { return SSet<Term>(me().data[0]); }
-    Term       concl() const { return Term(me().data[1]); }
+    explicit Thm(Term concl, List<IdBase> proof = id_NULL)                  : P({ThmData{{id_NULL, +concl}, +proof}}) {}
+    explicit Thm(SSet<Term> hyps, Term concl, List<IdBase> proof = id_NULL) : P({ThmData{{+hyps,   +concl}, +proof}}) {}
+    SSet<Term>   hyps () const { return SSet<Term>(me().data[0]); }
+    Term         concl() const { return Term(me().data[1]); }
+    List<IdBase> proof() const { return List<IdBase>(me().proof); }
 #endif
 };
 

@@ -1,0 +1,212 @@
+##include "std.evo";
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Specification types:
+
+
+data A_tvar = {};
+data B_tvar = {};
+data C_tvar = {};
+
+data Unviable = {()};
+
+data Cost<A> = {(Float, A)};
+fun cost_<A>(val :Float, sym: A) -> Cost<A> { Cost<A>.0(val, sym) };
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Score function helpers:
+
+
+// NOTE! A return value of 'int_max' encodes "all pairs solved".
+
+
+// Generic version. Will not convert '[Int]' to 'List<Int>' so use 'list_' explicitly.
+fun score_helper_<A,B>(f_ :A->B, equal_ :(B, B)->Bool, pairs :[(A, B)]) -> Int {
+    let score = &0;
+    for_vec_(pairs, \i{
+        let (input, output) = get_(pairs, i);
+        if_(equal_(f_ input, output), \{
+            assign_(score, add_(^score, 1)); });
+    });
+
+    ite_(eq_(^score, size_(pairs)), int_max, ^score);
+};
+
+
+
+data Unknown = {()};
+fun unknown_<A>() -> A { throw_<A, Unknown>(Unknown.0()); };
+
+fun score_with_unknowns_<A,B>(f_ :A->B, equal_ :(B, B)->Bool, pairs :[(A, B)]) -> Int {
+    let score = &0;
+    for_vec_(pairs, \i{
+        let (input, answer) = get_(pairs, i);
+        try_<Void, Unknown>(\{
+            let output = f_ input;
+            let diff   = ite_(equal_(output, answer), 1, -1000000);
+            assign_(score, add_(^score, diff));
+        },\_{});
+    });
+
+    ite_(eq_(^score, size_(pairs)), int_max, ^score);
+};
+
+fun score_with_fails_<A,B>(f_ :A->B, equal_ :(B, B)->Bool, pairs :[(A, B)]) -> Int {
+    let score = &0;
+    for_vec_(pairs, \i{
+        let (input, answer) = get_(pairs, i);
+        try_<Void,Void>(\{
+            let output = f_ input;
+            let diff   = ite_(equal_(output, answer), 1, -1000000);
+            assign_(score, add_(^score, diff));
+        },\_{});
+    });
+
+    ite_(eq_(^score, size_(pairs)), int_max, ^score);
+};
+
+
+fun viable_helper_<A,B>(f_ :A->B, equal_ :(B, B)->Bool, pairs :[(A, B)]) -> Bool {
+    try_<Bool, Unviable>(\{
+        for_vec_(pairs, \i{
+            let (input, output) = get_(pairs, i);
+            let ok = try_<Bool,Void>(`equal_(f_ input, output), `_1);
+            if_(not_ ok, `throw_<(),Unviable>(Unviable.0()));
+        });
+        _1;
+    },\_{
+        _0;
+    });
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+//
+
+
+type RLim = (Int, Int, Int);    // -- (cpu-limit in steps, memory-limit in bytes, max recursion depth)
+
+type Result = Int;
+rec res_NULL    : Int = 0;      // -- used for skipped I/O pairs where program was not even run
+rec res_RIGHT   : Int = 1;      // -- correct answer
+rec res_WRONG   : Int = 2;      // -- incorrect answer
+rec res_ABSTAIN : Int = 3;      // -- deliberately no answer ('fail<T>' = known unknown)
+rec res_CRASH   : Int = 4;      // -- fatal exception (such as null deref) was thrown
+rec res_CPU_LIM : Int = 5;      // -- exceeded CPU limit
+rec res_MEM_LIM : Int = 6;      // -- exceeded memory limit (only checked at GC)
+rec res_REC_LIM : Int = 7;      // -- exceeded recursion depth limit
+rec res_SIZE    : Int = 8;
+
+
+fun run_one_<IN,OUT>(in :IN, ans :OUT, f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool)  ->  Int
+{
+    try_<Result, Excp_Exit>(\{
+        try_<Result, ()>(\{
+            let out = run_(`f_ in, #0 rlim, #1 rlim, #2 rlim);
+            ite_(checker_(in, ans, out), res_RIGHT, res_WRONG);
+        },\{
+            res_ABSTAIN;
+        });
+
+    },\(code, atom, index, size){
+        cond_(code $== "cpu_lim", `res_CPU_LIM, \{
+        cond_(code $== "mem_lim", `res_MEM_LIM, \{
+        cond_(code $== "rec_lim", `res_REC_LIM, \{
+                                   res_CRASH
+        })})});
+    });
+};
+
+
+// Counts the number of results of each type and returns a vector of length 'res_SIZE'.
+fun summarize_(results :[Result]) -> [Int] {
+    let summary : [Int];
+    resize_(summary, res_SIZE);
+    apply_all_(results, \r{
+        set_(summary, r, summary@r + 1); });
+    summary;
+};
+
+
+// Run all I/O pairs unconditionally.
+fun run_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool) -> [Int]
+{
+    let results : [Result];
+    resize_(results, size_ io_pairs);
+    for_vec_(io_pairs, \i{
+        let (in, out) = io_pairs @ i;
+        let r = run_one_(in, out, f_, rlim, checker_);
+        results @= i r;
+    });
+    results;
+};
+
+
+// Run through I/O pairs with resource limit 'rlim_lo' as long as no WRONG answer is received. If
+// made it to the end, go back and rerun the pairs which hit the resource limit (using 'rlim_hi').
+// In both cases, stop as soon as WRONG is returned (to save time).
+fun run_some_or_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim_hi :RLim, checker_ :(IN, OUT, OUT)->Bool) -> [Int]
+{
+    let results : [Result];
+    resize_(results, size_ io_pairs);    // -- we rely on 'res_NULL == 0' here for initialization
+
+    let (c,m,r) = rlim_hi;
+    let rlim_lo = (c/10, r/10, r/10);
+
+    let ok = try_<Bool,()>(\{
+        for_vec_(io_pairs, \i{
+            let (in, out) = io_pairs @ i;
+            let r = run_one_(in, out, f_, rlim_lo, checker_);
+            results @= i r;
+            if_(r == res_WRONG, `fail<()>);
+        });
+        _1;
+    },`_0);
+
+    if_(ok, \{
+        try_<(),()>(\{
+            for_vec_(io_pairs, \i{
+                if_(results @ i >= res_CPU_LIM, \{
+                    let (in, out) = io_pairs @ i;
+                    let r = run_one_(in, out, f_, rlim_hi, checker_);
+                    results @= i r;
+                    if_(r != res_RIGHT, `fail<()>);
+                });
+            });
+        }, `());
+    });
+    results;
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Internal helpers:
+
+
+fun list_eq_<A>(equal_: (A, A)->Bool) -> ((List<A>, List<A>) -> Bool) {
+    fun list_eq_A_ (xs0 : List<A>, ys0 : List<A>) -> Bool {
+        case_(xs0
+        ,\{
+            case_(ys0
+            ,\       { _1 }
+            ,\(y, ys){ _0 }
+            );
+        },\(x, xs){
+            case_(ys0
+            ,\       { _0 }
+            ,\(y, ys){ land_(equal_(x, y), \{ list_eq_A_(xs, ys) }) }
+            );
+        });
+    };
+
+    list_eq_A_;
+};
+
+
+fun pair_eq_<A,B>(eq_A_: (A, A)->Bool, eq_B_: (B, B)->Bool) -> ((A,B), (A,B)) -> Bool {
+    fun pair_eq_(p :(A,B), q :(A,B)) -> Bool {
+        land_(eq_A_(#0 p, #0 q), `eq_B_(#1 p, #1 q)); };
+    pair_eq_;
+};

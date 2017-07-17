@@ -1,7 +1,6 @@
 #ifndef ZZ__Console__Console_hh
 #define ZZ__Console__Console_hh
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

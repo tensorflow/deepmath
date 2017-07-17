@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef ZZ__HolLight__WriteProof_hh
 #define ZZ__HolLight__WriteProof_hh
 
-#include "deepmath/zz/HolLight/ProofStore.hh"
+#include "ProofStore.hh"
 
-#include ZZ_Prelude_hh
 namespace ZZ {
 using namespace std;
 

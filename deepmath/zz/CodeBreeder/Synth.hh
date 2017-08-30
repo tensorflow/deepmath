@@ -39,12 +39,14 @@ struct Params_Synth {
     String  gen_training = "";          // -- file to write training protos to
 
     Params_SynthEnum enum_;
+    bool    use_prune_rules  = true;
 
     bool    inc_eval         = true;
     bool    keep_going       = false;
     double  base_rebate      = 1.0;     // -- A factor of 1 means no rebate for base case (turn it off).
+    bool    soft_rebate      = false;   // -- If true, rebate only apply to cost of constructs added AFTER discovering potential base-case
 
-    // Overal search procedure limits:
+    // Overall search procedure limits:
     uint64  max_tries = UINT64_MAX;
     uint64  max_queue = UINT64_MAX;     // -- in enqueued states
     double  max_cpu   = -1;             // -- in seconds
@@ -57,8 +59,8 @@ struct Params_Synth {
 
     // Python interface:
     uint    batch_size = 64;
-
-    // <<== output options, save to file, randomize all costs or zero costs, seed etc.
+    double  randomize_costs = 0.0;      // -- add a random cost '[0,x[' to each actual cost computed (to shake up the heap a bit)
+    bool    enumeration_mode = false;   // -- if TRUE, output of generated program is ignored and each candidate is considered a solution
 };
 
 void addParams_Synth(CLI& cli);
@@ -67,11 +69,12 @@ void setParams_Synth(const CLI& cli, Params_Synth& P);
 
 // Forward declare protobuf for callback:
 typedef function<std::vector<double>(::CodeBreeder::PoolProto const&, std::vector<::CodeBreeder::StateProto> const&)> CostFun;
+typedef function<void(::CodeBreeder::TrainingProto const&)> SolutionFun;  // -- called with the genealogy of the solution
 
 ::CodeBreeder::PoolProto getPool(String spec_file, String params, bool spec_file_is_text = false);
 
-int64 synthesizeProgram(String spec_file, Params_Synth P = Params_Synth(), bool spec_file_is_text = false, CostFun cost_fun = CostFun());
-int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun = CostFun());
+int64 synthesizeProgram(String spec_file, Params_Synth P = Params_Synth(), bool spec_file_is_text = false, CostFun cost_fun = CostFun(), SolutionFun sol_fun = SolutionFun());
+int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun = CostFun(), SolutionFun sol_fun = SolutionFun());
   // -- returns the best score achieved (which for the standard score function is the number of
   // correctly solved input/output pairs or INT64_MAX if all pairs are correct; INT64_MIN if
   // resource limits were such that not a single program was tried).

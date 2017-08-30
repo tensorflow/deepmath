@@ -212,7 +212,7 @@ public:
     // Methods:
     Tokenizer(cchar* text, String cwd, OpDecls& op_decls, Atom filename = Atom(), bool suppress_filename = false) :
         // -- note that constructor may throw exception (fine as long as we have no destructor; otherwise function try-block should be used on constructor)
-        text(text), cwd(move(cwd)), filename(filename), op_decls(op_decls)
+        text(text), cwd(cwd), filename(filename), op_decls(op_decls)
     {
         loc_upto = Loc(1, 0, suppress_filename ? Atom() : filename);
         curr = Str(text, 0u);
@@ -484,7 +484,7 @@ static Expr parseSymbol_(Tokenizer& tok, Type (*parse_typearg)(Tokenizer&))
     bool has_ws = tok.peekWs();
     Atom name = expectVar(tok);
     Vec<Type> targ = (!has_ws && tok.match("<")) ? parseList(tok, parse_typearg, "", ">") : Vec<Type>();
-    return Expr::Sym(name, move(targ), Type()).setLoc(loc);
+    return Expr::Sym(name, targ, Type()).setLoc(loc);
 }
 static Expr parseSymbol   (Tokenizer& tok){ return parseSymbol_(tok, parseType); }
 static Expr parseDefSymbol(Tokenizer& tok){ return parseSymbol_(tok, parseTypeVar); }
@@ -698,7 +698,7 @@ static Expr parseTypeDef(Tokenizer& tok, bool synon)
     tok.expect("=");
     if (!synon && !tok.is("{")) tok.error("Data types must be sum-types \"data T = {T0, T1, ...}\".");
     Type tdef = parseType(tok);
-    return Expr::NewType(synon, name, move(targ), move(tdef)).setLoc(loc);
+    return Expr::NewType(synon, name, targ, move(tdef)).setLoc(loc);
 }
 
 
@@ -757,7 +757,7 @@ static void parseProg(Tokenizer& tok, IntSeen<Atom>& includes, Vec<Expr>& out)
                 parseOpDecl(tok);
             }else{
                 tok.expect("include");
-                Atom filename = expectStr(tok).slice(1, END-1);
+                Atom filename = expectStr(tok).slice(1, END-1);     // <<== maybe here is the place where the filename should be expanded
                 if (!includes.add(filename))
                     parseProg(filename, tok.currDir(), false, includes, out, tok.op_decls);
             }

@@ -42,6 +42,10 @@ bool isVar(Str str) {   // -- start with lower-case letter or underscore
     return str && str.size() > 0 && ((str[0] >= 'a' && str[0] <= 'z') || str[0] == '_'); }
 
 
+Atom a_x;
+Atom a_y;
+Atom a_z;
+
 Atom a_case;
 Atom a_ite;
 Atom a_assign;
@@ -63,6 +67,10 @@ Atom a_print_atom;
 
 Atom a_try;
 Atom a_throw;
+Atom a_ttry;
+Atom a_tthrow;
+Atom a_block;
+Atom a_break;
 
 Atom a_underscore;
 Atom a_false;
@@ -73,6 +81,10 @@ Atom a_line;
 Atom a_file;
 
 ZZ_Initializer(a_special_symbols, 0) {
+    a_x           = Atom("x");
+    a_y           = Atom("y");
+    a_z           = Atom("z");
+
     a_case        = Atom("case_");
     a_ite         = Atom("ite_");
     a_assign      = Atom("assign_");
@@ -94,6 +106,10 @@ ZZ_Initializer(a_special_symbols, 0) {
 
     a_try         = Atom("try_");
     a_throw       = Atom("throw_");
+    a_ttry        = Atom("ttry_");
+    a_tthrow      = Atom("tthrow_");
+    a_block       = Atom("block");  // }- keywords, so no trailing '_' (but parsed as functions)
+    a_break       = Atom("break");  // }
 
     a_underscore  = Atom("_");
     a_false       = Atom("_0");
@@ -123,6 +139,7 @@ Atom a_Any;
 Atom a_Internal;
 Atom a_A;
 Atom a_B;
+Atom a_T;
 
 Vec<Atom> bit_primitive;
 Vec<Atom> bit_composite;
@@ -142,6 +159,7 @@ ZZ_Initializer(a_atoms, 0) {
     a_Internal = Atom("_Internal");
     a_A        = Atom("A");
     a_B        = Atom("B");
+    a_T        = Atom("T");
 
     bit_primitive += a_Void, a_Bool, a_Int, a_Float, a_Atom;
     bit_composite += a_Ref, a_OneOf, a_Fun, a_Tuple, a_Vec;
@@ -253,25 +271,37 @@ void writeExpr(Out& out, Expr const& e, bool is_arg)
 }
 
 
-String ppFmt(Expr const& expr)
+String ppFmtI(Expr const& expr, uint indent_level)
 {
     String tmp; tmp += expr;
     String out;
+    Vec<char> indent(indent_level, ' ');
+    out += indent;
     for (uind i = 0; i < tmp.size(); i++){
         char c = tmp[i];
         char d = tmp[i+1];
         if      (c == '{' && d == '}'){ out += "{}"; i++; }
-        else if (c == '{')            { out += "{\t+\t+\n"; }
-        else if (c == '}')            { out += "\n\t-\t-}"; }
-        else if (c == ';' && d == ' '){ out += ";\n"; i++; }
+        else if (c == '{')            { indent.push(' '); indent.push(' '); out += '{', NL, indent; }
+        else if (c == '}')            { indent.pop(), indent.pop(); out += NL, indent, '}'; }
+        else if (c == ';' && d == ' '){ out += ';', NL, indent; i++; }
+        else if (c == '\n')           { out += NL, indent; }
         else out += c;
     }
     return out;
 }
 
 
+void gdbPrintType(Type const& type)
+{
+    printf("%s\n", fmt("%_", type).c_str());
+    fflush(stdout);
+}
+
+
 void gdbPrintExpr(Expr const& expr)
 {
+    printf("TYPE: ");
+    gdbPrintType(expr.type);
     printf("%s\n", ppFmt(expr).c_str());
     fflush(stdout);
 }
@@ -296,6 +326,17 @@ Type typeSubst(Type const& type, Arr<Type> const& from, Arr<Type> const& into)
         return vecEqual(ts, type) ? type : Type(type.name, ts);
     }else
         return type;
+}
+
+
+Type typeSubst(Type const& type, Vec<TSubst> const& subs)
+{
+    Vec<Type> from(reserve_, subs.size());
+    Vec<Type> into(reserve_, subs.size());
+    for (TSubst s : subs){
+        from.push(s.a);
+        into.push(s.ty); }
+    return typeSubst(type, from, into);
 }
 
 

@@ -118,6 +118,7 @@ struct CLI_Val {
     uind           size      ()       const { assert(sub); return sub->size(); }
     CLI_Val&       operator[](uind i)       { assert(sub); return sub->get(i); }
     const CLI_Val& operator[](uind i) const { assert(sub); return sub->get(i); }
+    Std_Array_Funcs(CLI_Val);
 
     // Which alternative did we match? ('-1' means there was no choice to be made (no "Or" node in signature))
     int     choice;

@@ -1,0 +1,220 @@
+##include "std.evo";
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Specification types:
+
+
+data A_tvar = {};
+data B_tvar = {};
+data C_tvar = {};
+
+data Cost<A> = {(Float, A)};
+fun cost_<A>(val :Float, sym: A) -> Cost<A> { Cost<A>.0(val, sym) };
+
+rec obl<T> : T = default<T>;    // -- this tag is used in 'init_state_' patterns to mark obligations
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Runners:
+
+
+type RLim = (Int, Int, Int);    // -- (cpu-limit in steps, memory-limit in bytes, max recursion depth)
+
+type Result = Int;
+let res_NULL    = 0;      // -- used for skipped I/O pairs where program was not even run
+let res_RIGHT   = 1;      // -- correct answer
+let res_WRONG   = 2;      // -- incorrect answer
+let res_ABSTAIN = 3;      // -- deliberately no answer ('fail<T>' = known unknown)
+let res_CRASH   = 4;      // -- fatal exception (such as null deref) was thrown
+let res_CPU_LIM = 5;      // -- exceeded CPU limit
+let res_MEM_LIM = 6;      // -- exceeded memory limit (only checked at GC)
+let res_REC_LIM = 7;      // -- exceeded recursion depth limit
+let res_SIZE    = 8;
+
+let res_name = [:Atom
+    "NULL",
+    "RIGHT",
+    "WRONG",
+    "ABSTAIN",
+    "CRASH",
+    "CPU_LIM",
+    "MEM_LIM",
+    "REC_LIM",
+    "SIZE",
+];
+
+
+fun run_one_<IN,OUT>(in :IN, ans :OUT, f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool) -> Result
+{
+    try_<Result, Excp_Exit>(\{
+        try_<Result, ()>(\{
+            let out = run_(`f_ in, #0 rlim, #1 rlim, #2 rlim);
+            ite_(checker_(in, ans, out), res_RIGHT, res_WRONG);
+        },\{
+            res_ABSTAIN;
+        });
+
+    },\(code, atom, index, size){
+        cond_(code $== "cpu_lim", `res_CPU_LIM, \{
+        cond_(code $== "mem_lim", `res_MEM_LIM, \{
+        cond_(code $== "rec_lim", `res_REC_LIM, \{
+                                   res_CRASH
+        })})});
+    });
+};
+
+
+// Run all I/O pairs unconditionally.
+fun run_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool) -> [Result]
+{
+    let results : [Result];
+    resize_(results, size_ io_pairs);
+    for_vec_(io_pairs, \i{
+        let (in, out) = io_pairs @ i;
+        let r = run_one_(in, out, f_, rlim, checker_);
+        results @= i r;
+    });
+    results;
+};
+
+
+// Run through I/O pairs with resource limit 'rlim_lo' as long as no WRONG answer is received. If
+// made it to the end, go back and rerun the pairs which hit the resource limit (using 'rlim_hi').
+// In both cases, stop as soon as WRONG is returned (to save time).
+fun run_some_or_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim_hi :RLim, checker_ :(IN, OUT, OUT)->Bool) -> [Result]
+{
+    let results : [Result];
+    resize_(results, size_ io_pairs);    // -- we rely on 'res_NULL == 0' here for initialization
+
+    let (c,m,r) = rlim_hi;
+    let rlim_lo = (c/10, r/10, r/10);
+
+    let ok = try_<Bool,()>(\{
+        for_vec_(io_pairs, \i{
+            let (in, out) = io_pairs @ i;
+            let r = run_one_(in, out, f_, rlim_lo, checker_);
+            results @= i r;
+            if_(r == res_WRONG, `fail<()>);
+        });
+        _1;
+    },`_0);
+
+    if_(ok, \{
+        try_<(),()>(\{
+            for_vec_(io_pairs, \i{
+                if_(results @ i >= res_CPU_LIM, \{
+                    let (in, out) = io_pairs @ i;
+                    let r = run_one_(in, out, f_, rlim_hi, checker_);
+                    results @= i r;
+                    if_(r != res_RIGHT, `fail<()>);
+                });
+            });
+        }, `());
+    });
+    results;
+};
+
+
+// Counts the number of results of each type and returns a vector of length 'res_SIZE'.
+fun summarize_(results :[Result]) -> [Int] {
+    let summary : [Int];
+    resize_(summary, res_SIZE);
+    apply_all_(results, \r{
+        set_(summary, r, summary@r + 1); });
+    summary;
+};
+
+
+// Will ignore output component of 'io_pairs'.
+//fun get_test_vec_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim :RLim) -> [Maybe<OUT>] {
+fun get_test_vec_<IN,OUT>(io_pairs :[(IN, OUT)], rlim :RLim) -> (IN->OUT) -> [Maybe<OUT>] {
+    fun ret_(f_ :IN->OUT) -> [Maybe<OUT>] {
+        vec_map_<(IN, OUT), Maybe<OUT>>(io_pairs, \(in, _){
+            try_<Maybe<OUT>, Excp_Exit>(\{
+                try_<Maybe<OUT>, ()>(\{
+                    some_(run_(`f_ in, #0 rlim, #1 rlim, #2 rlim));
+                },\{
+                    none<OUT>;
+                })
+            },\_{
+                none<OUT>;
+            });
+        });
+    };
+    ret_;
+};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Coverage analysis:
+
+
+// Obligations should be replaced by 'tthrow_<OblType, Int>("coverage", cov_point)
+// where 'cov_point' is an integer. Covered points will be collected in a 64-bit mask.
+/*
+fun run_for_cover_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool) -> Int
+{
+    let mask : &Int;
+    for_vec_(io_pairs, \i{
+        let (in, out) = io_pairs @ i;
+        ttry_<(),Int>("coverage", \{
+            run_one_(in, out, f_, rlim, checker_);      // <<== change this later; don't need a checker
+            ();
+        },\n{
+            mask |= 1 %<< (n %& 63);
+        });
+    });
+    ^mask;
+};
+*/
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Pruning rules:
+
+
+fun appl<A,B,C>(_ :A->B, _ :C) {};
+fun wild(_ :Atom) {};
+fun unordered() {};
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Symbol sets:
+
+
+let syms_basic_ = (
+    case_<List<Int>, Bool>,
+    case_<List<Int>, Int>,
+    case_<List<Int>, List<Int>>,
+
+    cond_<Int>,
+    cond_<List<Int>>,
+
+    _0, _1,
+    equiv_, land_, lor_, not_,
+
+    0, 1,
+    neg_,
+    add_, sub_, mul_, div_, mod_,
+    eq_, ge_, gt_,
+
+    inc_, dec_, is_zero_, max_, min_,
+
+    nil<Int>,
+    cons_<Int>,
+);
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Defaults:
+
+
+rec default_runner_<IN,OUT> : ([(IN, OUT)], IN->OUT, RLim, (IN, OUT, OUT)->Bool) -> [Int] = run_some_or_all_<IN,OUT>;
+fun default_checker_<IN,OUT>(in :IN, ans :OUT, out :OUT) -> Bool { equal_(ans, out); };
+rec default_wrapper_<IN,OUT> : (IN->OUT) -> (IN->OUT) = id_<IN->OUT>;
+
+fun test_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT) -> [Atom] {
+    let result = run_all_(io_pairs, f_, (250000, 8000000, 10000), default_checker_<IN,OUT>);
+    vec_map_<Int,Atom>(result, \n{ res_name @ n });
+};

@@ -58,12 +58,16 @@ bool does_compile(const std::string& progtext) {
   return true;
 }
 
-int64 synthesize_program(const std::string& progtext,
-                         const std::string& params) {
+int64 synthesize_program(
+  const std::string& progtext,
+  const std::string& params,
+  std::function<void(::CodeBreeder::TrainingProto const &)> sol_callback
+) {
   initialize();
   ZZ::String prog_text(progtext.c_str());
   ZZ::String parameters(params.c_str());
-  auto score = ZZ::pySynthesizeProgram(prog_text, parameters);
+  auto score = ZZ::pySynthesizeProgram(prog_text, parameters,
+                                       ZZ::CostFun(), std::move(sol_callback));
   ZZ::wrLn("Score: %_", score);
   return score;
 }
@@ -71,14 +75,16 @@ int64 synthesize_program(const std::string& progtext,
 int64 synthesize_with_guidance(
     const std::string& progtext,
     const std::string& params,
-    std::function<std::vector<double>(
-      ::CodeBreeder::PoolProto const &,
-      std::vector<::CodeBreeder::StateProto> const &)> callback) {
+    std::function<std::vector<double>(::CodeBreeder::PoolProto const &,
+      std::vector<::CodeBreeder::StateProto> const &)> guide_callback,
+    std::function<void(::CodeBreeder::TrainingProto const &)> sol_callback
+) {
   initialize();
   ZZ::String prog_text(progtext.c_str());
   ZZ::String parameters(params.c_str());
   auto score =
-      ZZ::pySynthesizeProgram(prog_text, parameters, std::move(callback));
+      ZZ::pySynthesizeProgram(prog_text, parameters, std::move(guide_callback),
+                              std::move(sol_callback));
   ZZ::wrLn("Score: %_", score);
   return score;
 }
@@ -125,9 +131,9 @@ std::pair<std::string, bool> evo_run_rlim(EvoVm* vm, const std::string& progtext
                                           uint64 cpu_lim, uint64 mem_lim, uint rec_lim) {
   ZZ::String text;
   ZZ::Params_RunTime P;
-  P.cpu_lim = cpu_lim;
-  P.mem_lim = mem_lim;
-  P.rec_lim = rec_lim;
+  P.lim.cpu = cpu_lim;
+  P.lim.mem = mem_lim;
+  P.lim.rec = rec_lim;
   P.verbose = false;
   P.out = to_string ? &text : &ZZ::std_out;
 
@@ -143,7 +149,7 @@ std::pair<std::string, bool> evo_run_rlim(EvoVm* vm, const std::string& progtext
 
 std::pair<std::string, bool> evo_run(EvoVm* vm, const std::string& progtext, bool to_string) {
   ZZ::Params_RunTime P;
-  return evo_run_rlim(vm, progtext, to_string, P.cpu_lim, P.mem_lim, P.rec_lim);
+  return evo_run_rlim(vm, progtext, to_string, P.lim.cpu, P.lim.mem, P.lim.rec);
 }
 
 

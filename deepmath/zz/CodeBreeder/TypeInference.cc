@@ -73,7 +73,7 @@ static cchar* DefKind_names[DefKind_size] = {
 struct TypeFun {
     DefKind   kind;     // -- the type function originates from this kind of construct
     Arr<Type> params;   // -- type parameters (formals to be replaced)
-    Type      def;      // -- parameterized types (contains type-variables from 'targs')
+    Type      def;      // -- parameterized types (contains type-variables from 'params')
     Loc       loc;      // -- definition location
 
     TypeFun(DefKind kind = def_NULL, Arr<Type> params = Arr<Type>(), Type def = Type(), Loc loc = Loc())
@@ -583,10 +583,10 @@ static Type inferTypes(Expr& expr, SymTable<TypeFun>& tab, Type ctx_type, bool g
         for (TSubst s : subs)
             checkValidType(s.a, tab);
 
-        SymTable<TypeFun> tab_match = specializeSymTable(tab, subs);    // <<== maybe here
+        SymTable<TypeFun> tab_match = specializeSymTable(tab, subs);
         addFreeTypeVars(t_spec, tab_match);
 
-        inferTypes(expr[1], tab_match, ctx_type);
+        inferTypes(expr[1], tab_match, typeSubst(ctx_type, subs));
         inferTypes(expr[2], tab      , ctx_type);
         expr.type = expr[2].type;
         break; }
@@ -651,9 +651,14 @@ Inferrer::Inferrer()
 
     tab.add(a_try   , TypeFun(def_Cnst, {tvar_A, tvar_TT}, parseType("(Void->A, TT->A) -> A")));
     tab.add(a_throw , TypeFun(def_Cnst, {tvar_A, tvar_TT}, parseType("TT -> A")));
+    tab.add(a_ttry  , TypeFun(def_Cnst, {tvar_A, tvar_TT}, parseType("(Atom, Void->A, TT->A) -> A")));
+    tab.add(a_tthrow, TypeFun(def_Cnst, {tvar_A, tvar_TT}, parseType("(Atom, TT) -> A")));
 
     tab.add(a_line , TypeFun(def_Cnst, {}, parseType("Int")));
     tab.add(a_file , TypeFun(def_Cnst, {}, parseType("Atom")));
+
+    tab.add(a_block , TypeFun(def_Cnst, {tvar_A}, parseType("A -> A")));
+    tab.add(a_break , TypeFun(def_Cnst, {tvar_A}, parseType("A -> Void")));
 }
 
 
@@ -668,6 +673,10 @@ void Inferrer::push() {
 void Inferrer::pop() {
     while (data->tab.size() > data->undo.last()) data->tab.pop();
     data->undo.pop(); }
+
+
+Type Inferrer::lookupType(Type const& type) {
+    return data->tab[type](type.args); }
 
 
 // Program type inference. Top-level includes typedefs and datadefs not allowed in inner scopes.

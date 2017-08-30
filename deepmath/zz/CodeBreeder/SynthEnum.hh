@@ -61,13 +61,14 @@ uint getId(Type const& type);
 struct GExpr {
     GExprKind   kind;
     bool        internal;       // -- gates inside a closed scope (cannot be used anymore)
+    uint        type_id;
     double      cost;           // -- for obligations, lower-bound on cost for completing obligation
     Arr<uint>   ins;            // <<== could be optimized
-    uint        type_id;
+    Arr<ushort> p_rules;        // -- pruning rules left to try for this node; NULL means all of them
 
-    GExpr(GExprKind kind = g_NULL) : kind(kind), internal(true), cost(0.0), ins(), type_id(0) {}
+    GExpr(GExprKind kind = g_NULL) : kind(kind), internal(true), type_id(0), cost(0.0), ins() {}
     GExpr(GExprKind kind, Arr<uint> ins, Type type, double cost = 0.0 , bool internal = false) :
-        kind(kind), internal(internal), cost(cost), ins(ins), type_id(getId(type)) {}
+        kind(kind), internal(internal), type_id(getId(type)), cost(cost), ins(ins) {}
 
     void toProto(::CodeBreeder::NodeProto* node_proto) const;
     Type type() const { return id2type[type_id]; }
@@ -81,8 +82,11 @@ struct State : PArr<GExpr> {
     bool   getLast(GExprKind kind, uint& tgt_i) const;
     bool   getOblRange(uint& tgt_i0, uint& tgt_i1) const;
     double cost() const;
-    Expr   expr(Pool const& P, bool obl_as_fail = false) const;
-    void   toProto(::CodeBreeder::StateProto* proto) const;
+    Expr   expr(Pool const& P, bool obl_as_fail = false, uint* n_cov_points = nullptr) const;
+    void   toProto(uint64 id, ::CodeBreeder::StateProto* proto) const;
+    int    order(uint i, uint j) const { uint count = 100; return order_(i, j, count); }
+private:
+    int    order_(uint i, uint j, uint& count) const;
 };
 
 
@@ -107,6 +111,12 @@ void expandOne(Pool const& pool, ENUM::State S, uint tgt_i, function<void(ENUM::
     // increase its value by 1 (for resource management/progress output).
 
 
+bool hasRecursion(ENUM::State const& S);
+    // -- does state contain a recursive call anywhere? (inefficient implementation)
+
+bool usesToplevelFormals(ENUM::State const& S);
+    // -- true if 'S[0]' is of type 'g_Lamb' and all formal arguments are used inside 'S'
+
 template<> fts_macro void write_(Out& out, ENUM::GExpr const& g)
 {
     wr(out, "\a/%_\a/\a_$%_\a_=%C\a/\a*%_\a0[", g.type(), g.cost, g.internal?'*':'\0', ENUM::GExprKind_name[g.kind]);
@@ -119,21 +129,23 @@ template<> fts_macro void write_(Out& out, ENUM::GExpr const& g)
 }
 
 
-template<> fts_macro void write_(Out& out, ENUM::State const& v)
+template<> fts_macro void write_(Out& out, ENUM::State const& v, Str flags)
 {
-    out += "State{ ";
+    out += "State{", (flags ? "\n" : "");
     for (uint i = 0; i < v.size(); i++){
         ENUM::GExpr g = v[i];
-        wr(out, "\a*n%_\a*:\a/%_\a/\a_$%_\a_=%C\a/\a*%_\a0[", i, g.type(), g.cost, g.internal?'*':'\0', ENUM::GExprKind_name[g.kind]);
+        wr(out, "%_\a*n%_\a*:\a/%_\a/\a_$%_\a_=%C\a/\a*%_\a0[", flags?"    ":" ", i, g.type(), g.cost, g.internal?'*':'\0', ENUM::GExprKind_name[g.kind]);
         for (uint j = 0; j < (+g.ins).size(); j++){
             if (j != 0) wr(out, ", ");
             if ((int)g.ins[j] >= 0) out += g.ins[j];
             else wr(out, "#%_", ~g.ins[j]);
         }
-        out += "]; ";
+        out += "];", (flags ? "\n" : " ");
     }
     out += '}';
 }
+template<> fts_macro void write_(Out& out, ENUM::State const& v) {
+    write_(out, v, Str()); }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

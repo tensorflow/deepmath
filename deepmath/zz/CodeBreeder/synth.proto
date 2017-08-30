@@ -31,7 +31,8 @@ message NodeProto {
 };
 
 message StateProto {
-  repeated NodeProto node = 1;
+  required uint64 state_id = 1;
+  repeated NodeProto node = 2;
 };
 
 message PoolProto {
@@ -44,4 +45,8 @@ message TrainingProto {
   optional PoolProto pool_proto = 1;
   repeated StateProto positive = 2;  // }- Each geneaology sequence is terminated by an empty state
   repeated StateProto negative = 3;  // }
+  repeated bool property_features = 4;
+  optional string evo_code = 5;      // 'positive' contains one complete program; this is the textual representation of it
+  optional string evo_output = 6;    // result (on stdout) from running the program in 'evo_code' on I/O pairs
+  optional string type_string = 7;   // Textual representation of the type of the function to be synthesized.
 };

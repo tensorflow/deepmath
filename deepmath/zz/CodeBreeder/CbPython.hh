@@ -26,18 +26,23 @@ limitations under the License.
 
 bool does_compile(const std::string& text);
 
-int64 synthesize_program(const std::string& progtext,
-                         const std::string& params);
+::CodeBreeder::PoolProto get_pool(
+  const std::string& progtext,
+  const std::string& params
+  );
 
-::CodeBreeder::PoolProto get_pool(const std::string& progtext,
-                                  const std::string& params);
+int64 synthesize_program(
+  const std::string& progtext,
+  const std::string& params,
+  std::function<void(::CodeBreeder::TrainingProto const &)> sol_callback
+  );
 
 int64 synthesize_with_guidance(
   const std::string& progtext,
   const std::string& params,
-  std::function<std::vector<double>(
-    CodeBreeder::PoolProto const &,
-    std::vector<CodeBreeder::StateProto> const &)> callback);
+  std::function<std::vector<double>(CodeBreeder::PoolProto const &, std::vector<CodeBreeder::StateProto> const &)> guide_callback,
+  std::function<void(::CodeBreeder::TrainingProto const &)> sol_callback
+  );
 
 
 // Exposing Evo compiler/runtime system:

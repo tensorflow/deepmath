@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ZZ__CodeBreeder__Compile_hh
-#define ZZ__CodeBreeder__Compile_hh
+#ifndef ZZ__CodeBreeder__RandomFuncs_hh
+#define ZZ__CodeBreeder__RandomFuncs_hh
 
+#include "SynthEnum.hh"
 #include "Vm.hh"
 
 namespace ZZ {
@@ -25,23 +26,20 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-// Only needed for optimization; basic compilation is oblivious of previously compiled code.
-struct VmState {
-    Vec<Instr>&     code;
-    Vec<VM::Word>&  data;
-    Vec<VM::WTag>&  tag;
-    VmState(Vec<Instr> & code, Vec<VM::Word>& data, Vec<VM::WTag>& tag) : code(code), data(data), tag(tag) {}
+struct Params_RandFun {
+    uint verbosity = 1;
+
+    uint n_funcs_to_generate = 100;
+    bool print_only_recursive = false;
+    Params_SynthEnum P_enum;
+    ResLims          lim;
+
+    Vec<String> must_haves;
+    Vec<String> cant_haves;
 };
 
 
-// Compile whole expression. PRE-CONDITION: All literals have been added to 'tab0'.
-addr_t compile(Vec<Instr>& code, Expr const& prog, SymTable<RelPos>& tab0, RelPos& result, addr_t glob_off, VmState const& vm_state);
-    // -- NOTE! For now, illegal let-recs are detected in this (the compilation) phase.
-    // Perhaps this should be moved to an earlier phase.
-    // NOTE! The same now holds for 'write_' being passed a non-'Void->Void' function.
-
-uint reprSize(Type const& type);
-    // -- number of words (int64s) representation of 'type' occupies
+void generateRandomFunctions(String spec_filename, Params_RandFun const& P);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

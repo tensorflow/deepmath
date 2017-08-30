@@ -16,15 +16,21 @@ limitations under the License.
 #if defined(GOOGLE_CODE)    // -- for protobuf support:
   // Protobuf includes have to go before 'Prelude.hh'
   #include /*no-mangling*/ "third_party/deepmath/zz/CodeBreeder/synth.proto.h"
+  #define USE_PROTOBUFS
 #else
-  namespace CodeBreeder {
-  struct NodeProto;
-  struct StateProto;
-  struct TypeProto;
-  struct SymbolProto;
-  struct PoolProto;
-  struct TrainingProto;
-  }
+  #if 1     // -- change to zero to remove dependency on 'libprotobuf-dev'
+#include "synth.pb.h"
+    #define USE_PROTOBUFS
+  #else
+    namespace CodeBreeder {
+    struct NodeProto;
+    struct StateProto;
+    struct TypeProto;
+    struct SymbolProto;
+    struct PoolProto;
+    struct TrainingProto;
+    }
+  #endif
 #endif
 
 #include ZZ_Prelude_hh
@@ -37,9 +43,11 @@ limitations under the License.
 #include "zz/Generics/PArr.hh"
 #include "zz/Generics/IntSet.hh"
 #include "zz/Generics/IntMap.hh"
+#include "zz/Generics/Sort.hh"
 
 #include "SynthSpec.hh"
 #include "SynthEnum.hh"
+#include "SynthPrune.hh"
 #include "Parser.hh"
 #include "TypeInference.hh"
 #include "Vm.hh"
@@ -84,8 +92,11 @@ void addParams_Synth(CLI& cli)
     cli.add("ban-rec", "bool", P.enum_.ban_recursion?"yes":"no", "If 'yes', synthesized function must NOT contain a recursive call.");
     cli.add("inc-eval", "bool", P.inc_eval?"yes":"no", "Incremental evaluation (may turn off for debugging purposes).");
     cli.add("keep-going", "bool", P.keep_going?"yes":"no", "If 'yes', don't stop after first solution is found.");
-    cli.add("base-rebate", "ufloat", fmt("%_", P.base_rebate), "Use a value in ]0,1[ to prioritize search-space below (heuristic) basecase detection.");
+    cli.add("reb", "ufloat", fmt("%_", P.base_rebate), "Use a value in ]0,1[ to prioritize search-space below (heuristic) basecase detection.");
+    cli.add("soft-reb", "bool", P.soft_rebate?"yes":"no", "Apply rebate only to constructs added after discovery of potential basecase.");
     cli.add("batch-size", "uint", fmt("%_", P.batch_size), "Send states in batches of this size to Python callback.");
+    cli.add("rnd-costs", "ufloat", fmt("%_", P.randomize_costs), "Add a random cost to each expanded state.");
+    cli.add("enum-mode", "bool", P.enumeration_mode?"yes":"no", "If set, all complete programs are considered good.");
 }
 
 
@@ -105,17 +116,22 @@ void setParams_Synth(const CLI& cli, Params_Synth& P)
     P.gen_training     = cli.get("gen-training").string_val;
     P.inc_eval         = cli.get("inc-eval").bool_val;
     P.keep_going       = cli.get("keep-going").bool_val;
-    P.base_rebate      = cli.get("base-rebate").float_val;
+    P.base_rebate      = cli.get("reb").float_val;
+    P.soft_rebate      = cli.get("soft-reb").bool_val;
     P.batch_size       = cli.get("batch-size").int_val;
+    P.randomize_costs  = cli.get("rnd-costs").float_val;
+    P.enumeration_mode = cli.get("enum-mode").bool_val;
     if (cli.get("big" ).bool_val){ P.try_cpu_lim *=  10; P.try_mem_lim *=  10; P.try_rec_lim *=  10; }
     if (cli.get("huge").bool_val){ P.try_cpu_lim *= 100; P.try_mem_lim *= 100; P.try_rec_lim *= 100; }
     P.enum_.must_use_formals = cli.get("use-formals").bool_val;
     P.enum_.force_recursion  = cli.get("force-rec").bool_val;
     P.enum_.ban_recursion    = cli.get("ban-rec").bool_val;
+
+    if (P.enumeration_mode) P.keep_going = true;
 }
 
 
-#if defined(GOOGLE_CODE)
+#if defined(USE_PROTOBUFS)
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Protobuf support:
 
@@ -123,7 +139,7 @@ void setParams_Synth(const CLI& cli, Params_Synth& P)
 void typeToProto(const Type& t, ::CodeBreeder::TypeProto* proto)
 {
     proto->set_name(t.name.c_str());
-    for (int i = 0; i < t.size(); i++)
+    for (uint i = 0; i < t.size(); i++)
         typeToProto(t[i], proto->mutable_arg()->Add());
 }
 
@@ -133,23 +149,25 @@ void GExpr::toProto(::CodeBreeder::NodeProto* proto) const
     proto->set_kind(GExprKind_name[kind]);
     proto->set_internal(internal);
     proto->set_cost(cost);
-    for (int i = 0; i < ins.psize(); i++)
+    for (uint i = 0; i < ins.psize(); i++)
         proto->add_input((int)ins[i]);
     if (type())
         typeToProto(type(), proto->mutable_type_proto());
 }
 
 
-void State::toProto(::CodeBreeder::StateProto* proto) const // <<== move to SynthEnum.cc
+void State::toProto(uint64 id, ::CodeBreeder::StateProto* proto) const
 {
-    for (int i = 0; i < size(); ++i)
+    proto->set_state_id(id);
+    for (uint i = 0; i < size(); ++i)
         (*this)[i].toProto(proto->add_node());
 }
 
 
 void Pool::toProto(::CodeBreeder::PoolProto* proto) const
 {
-    for (CExpr const& s : syms){
+    for (uint i = 0; i < size(); i++){
+        CExpr s = (*this)[i];
         proto->add_name(s->name.c_str());
         typeToProto(s->type, proto->add_type_proto());
         proto->add_qualified_name(fmt("%_", *s).c_str());
@@ -185,14 +203,13 @@ void reportGenealogy(uind s, Vec<State> const& states, Vec<Pair<double,uint64>> 
 }
 
 
-#if defined(GOOGLE_CODE)
+#if defined(USE_PROTOBUFS)
 static Str slice(std::string const& str) {
     return slice(*str.begin(), *str.end()); }   // -- C++11 guarantees strings are contiguous
 
 
-void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<uind> const& parent, Pool const& pool)
+void genTrainingData(uind s, Vec<State> const& states, Vec<uind> const& parent, Pool const& pool, /*out*/::CodeBreeder::TrainingProto& tr_proto)
 {
-    ::CodeBreeder::TrainingProto tr_proto;
     pool.toProto(tr_proto.mutable_pool_proto());
 
     uint pos_count = 0;
@@ -210,8 +227,8 @@ void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<u
 
         if (hist.size() > 1){
             for (uind s : hist)
-                states[s].toProto(positive ? tr_proto.add_positive() : tr_proto.add_negative());
-            State().toProto(positive ? tr_proto.add_positive() : tr_proto.add_negative());
+                states[s].toProto(s, positive ? tr_proto.add_positive() : tr_proto.add_negative());
+            State().toProto(0, positive ? tr_proto.add_positive() : tr_proto.add_negative());   // -- separator (id 0 is unused)
             if (positive) pos_count += hist.size();
             else          neg_count += hist.size();
         }
@@ -220,9 +237,17 @@ void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<u
 
     writeExamples(s, true);
     uint64 seed = 0;
-    while (neg_count < pos_count * 9)   // -- 10/90 ratio between positives and negatives
+    uint max_tries = 10000;
+    while (neg_count < pos_count * 9 && max_tries > 0){   // -- 10/90 ratio between positives and negatives
         writeExamples(irand(seed, states.size()), false);
+        max_tries--; }
+}
 
+
+void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<uind> const& parent, Pool const& pool)
+{
+    ::CodeBreeder::TrainingProto tr_proto;
+    genTrainingData(s, states, parent, pool, tr_proto);
     {
         OutFile out(filename);
         //wrLn(out, "%_", slice(tr_proto.DebugString()));
@@ -231,12 +256,7 @@ void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<u
     wrLn("Wrote: \a*%_\a*", filename);
 }
 
-#else
-void outputTrainingData(String filename, uind, Vec<State> const&, Vec<uind> const&, Pool const&) { assert(false); }
-#endif
 
-
-#if defined(GOOGLE_CODE)
 ::CodeBreeder::PoolProto getPool(String spec_file, String params, bool spec_file_is_text)
 {
     Spec spec = readSpec(spec_file, spec_file_is_text, true);
@@ -245,6 +265,9 @@ void outputTrainingData(String filename, uind, Vec<State> const&, Vec<uind> cons
     pool.toProto(&pool_proto);
     return pool_proto;
 }
+
+#else
+void outputTrainingData(String filename, uind, Vec<State> const&, Vec<uind> const&, Pool const&) { assert(false); }
 #endif
 
 
@@ -257,6 +280,7 @@ class Synth {
     Spec         const& spec;
     Params_Synth const& P;
     CostFun             cost_fun;
+    SolutionFun         sol_fun;
 
     // Compilation:
     Inferrer       infr;
@@ -269,7 +293,9 @@ class Synth {
     Vec<uind>                   parent;
     Vec<float>                  rebate_mul;
     Vec<float>                  rebate_add;
+    Vec<uint>                   part_score;
     IdHeap<Pair<double,uint64>> Q;
+    Pruner                      pruner;
 
   #if defined(GOOGLE_CODE)
     // Batching:
@@ -292,8 +318,12 @@ class Synth {
     double exec_time = 0;
     double latest_cost = 0;
 
+    uint64 seed = 0;
+
     // Internal Methods:
     String evalExpr(Expr const& expr, String score_fun = "score_", String print_fun = "print_int_", Type score_type = Type(a_Int));
+    bool   failsRules(State const& S);
+    bool   hasUnreach(State const& S);
     void   enqueue(State S, uind from);
     void   reportProgress(bool keep_output);
 
@@ -302,35 +332,14 @@ class Synth {
   #endif
 
 public:
-    Synth(Spec const& spec, Params_Synth const& P, CostFun cost_fun) : spec(spec), P(P), cost_fun(cost_fun), Q(state_costs) {}
+    Synth(Spec const& spec, Params_Synth const& P, CostFun cost_fun, SolutionFun sol_fun)
+        : spec(spec), P(P), cost_fun(cost_fun), sol_fun(sol_fun), Q(state_costs)
+    {
+        if (P.use_prune_rules) pruner.init(spec.pruning, spec.pool);
+    }
+
     int64 run();
 };
-
-
-//-------------------------------------------------------------------------------------------------
-enum RunResults {
-    res_NULL   ,
-    res_RIGHT  ,
-    res_WRONG  ,
-    res_ABSTAIN,
-    res_CRASH  ,
-    res_CPU_LIM,
-    res_MEM_LIM,
-    res_REC_LIM,
-    res_SIZE   ,
-};
-
-
-
-struct ResLims {
-    uint64 cpu;
-    addr_t mem;
-    uint   rec;
-    ResLims(uint64 cpu = 0, addr_t mem = 0, uint rec = 0) : cpu(cpu), mem(mem), rec(rec) {}
-};
-
-
-//-------------------------------------------------------------------------------------------------
 
 
 // Returns 0 if successful, 1 on Evo runtime error, 2 on Evo compile time error.
@@ -339,7 +348,8 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
 {
     // Type: fun run_all_<IN,OUT>(io_pairs :[(IN, OUT)], f_ :IN->OUT, rlim :RLim, checker_ :(IN, OUT, OUT)->Bool) -> [Int]
     Expr e_rlim = mxTuple({mxLit_Int(rlim.cpu), mxLit_Int(rlim.mem), mxLit_Int(rlim.rec)});
-    Expr e_arg  = mxTuple({spec.io_pairs[0], expr, e_rlim, spec.checker[0]});
+    Expr e_fun  = mxAppl(spec.wrapper[0], expr);
+    Expr e_arg  = mxTuple({spec.io_pairs[0], e_fun, e_rlim, spec.checker[0]});
     Expr e_run  = mxAppl(spec.runner[0], e_arg);
 
     run_results.reset(res_SIZE+1, 0);
@@ -353,9 +363,11 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
         P_rt.verbose = false;
 
         addr_t ret = rt.run(e_run, P_rt);
-        if (ret == 0)
+        if (ret == 0){
             ret_code = 1;
-        else{
+            /**/wrLn("RUNTIME ERROR:\n%_", ppFmt(expr));
+            //**/wrLn("RUNTIME ERROR:\n%_", ppFmt(e_run));
+        }else{
             // Extract result vector and summarize it:
             addr_t vec_head = rt.data(ret).val;
             addr_t vec_data = rt.data(vec_head).val;
@@ -369,6 +381,8 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
             }
         }
     }catch (Excp_ParseError err){
+        /**/wrLn("COMPILE ERROR:\n%_", ppFmt(expr));
+        /**/Dump(err.msg);
         ret_code = 2;
     }
     double T1 = cpuTime();
@@ -379,120 +393,18 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
 }
 
 
+// Preserves the old text-based interface. New 'HeapSynth.cc/hh' depricates this.
 String Synth::evalExpr(Expr const& expr, String score_fun, String print_fun, Type score_type)
 {
-#if 0   /*DEBUG*/
-    static Expr e_fun = Expr::Sym(Atom("run_f_"), {}, parseType("(Int, Int->Int) -> Int"));
-    static Params_RunTime P_rt; P_rt.verbose = false;
-
-    int64 score = 0;
-    for (uint i = 0; i < spec.n_io_pairs; i++){
-        Expr e_arg = mxTuple({mxLit_Int(i), Expr(expr)});
-
-        rt.push();
-        try{
-            addr_t ret = rt.run(mxAppl(e_fun, e_arg), P_rt);
-            if (ret == 0) return "HALTED!";
-            int64 val = rt.data(ret).val;
-            assert(val >= 0 && val < res_SIZE);
-
-            if      (val == res_RIGHT) score++;
-            else if (val == res_WRONG) score -= 10000;
-        }catch (Excp_ParseError err){
-            return "HALTED!";
-        }
-        rt.pop();
-    }
-    if (score == spec.n_io_pairs) score = INT64_MAX;
-    return fmt("%_", score);
-#endif  /*END DEBUG*/
-
-#if 0   /*DEBUG*/
+    // <<== running out of resources should perhaps be considered an error, at least for base cases
     Vec<uint> results;
-    evalExpr_(expr, rt, spec, ResLims(P.try_cpu_lim, P.try_mem_lim, P.try_rec_lim), results, eval_time);
+    uint ret = evalExpr_(expr, rt, spec, ResLims(P.try_cpu_lim, P.try_mem_lim, P.try_rec_lim), results, eval_time);
+    if (ret == 1) return "HALTED!";
+    assert(ret != 2);       // -- compile error
     assert(spec.n_io_pairs == results[LAST]);
     int64 val = (results[LAST] == results[res_RIGHT]) ? INT64_MAX :
                                                         (int64)results[res_RIGHT] - 10000 * (int64)results[res_WRONG];
     return fmt("%_", val);
-#endif  /*END DEBUG*/
-
-    String result;
-    try{
-        double T0_eval = cpuTime();
-        if (P.inc_eval){
-            // Incremental evaluation:
-            Vec<Expr> code;
-            Expr score_sym  = Expr::Sym(Atom(score_fun), {}, Type(a_Fun, Type(spec.target), score_type));
-            Expr score_appl = Expr::Appl(move(score_sym), Expr(expr)).setType(Type(score_type));
-            Expr print_sym  = Expr::Sym(Atom(print_fun), {}, Type(a_Fun, score_type, Type(a_Void)));
-            Expr print_appl = Expr::Appl(move(print_sym), move(score_appl)).setType(Type(a_Void));
-            code.push(move(print_appl));
-            Expr new_prog = Expr::Block(code).setType(Type(code[LAST].type));
-
-            rt.push();
-            double T0_exec = cpuTime();
-
-            // Enumerator will generate expressions of type "rec f : Int->Int = \{f}();" which are illformed.
-            // Treat them as infinitely looping.
-            result.clear();
-            P_rt.out = &result;
-            try{
-                rt.run(new_prog, P_rt);
-            }catch (Excp_ParseError err){
-                result = "HALTED!";
-            }
-            double T1 = cpuTime();
-            eval_time += T1 - T0_eval;
-            exec_time += T1 - T0_exec;
-
-            rt.pop();
-
-        }else{
-            // Fresh-runtime-system evaluation:
-            Vec<Expr> code(copy_, spec.prog);    // -- note, shallow copy
-            Expr new_prog;
-            if (P.thru_text){
-                parseEvo(fmt("%_(%_(%_));", print_fun, score_fun, expr).c_str(), code);
-                new_prog = Expr::Block(code);
-                inferTypes(new_prog);
-            }else{
-                Expr score_sym  = Expr::Sym(Atom(score_fun), {}, Type(a_Fun, Type(spec.target), score_type));
-                Expr score_appl = Expr::Appl(move(score_sym), Expr(expr)).setType(Type(score_type));
-                Expr print_sym  = Expr::Sym(Atom(print_fun), {}, Type(a_Fun, score_type, Type(a_Void)));
-                Expr print_appl = Expr::Appl(move(print_sym), move(score_appl)).setType(Type(a_Void));
-                code.push(move(print_appl));
-                new_prog = Expr::Block(code).setType(Type(code[LAST].type));
-            }
-
-            Params_RunTime P_rt;
-            P_rt.cpu_lim = P.try_cpu_lim;
-            P_rt.mem_lim = P.try_mem_lim;
-            P_rt.rec_lim = P.try_rec_lim;
-            P_rt.verbose = false;
-            P_rt.out = &result;
-            RunTime rt;
-
-            // Enumerator will generate expressions of type "rec f : Int->Int = \{f}();" which are illformed.
-            // Treat them as infinitely looping.
-            double T0_exec = cpuTime();
-            try{
-                rt.run(new_prog, P_rt);
-            }catch (Excp_ParseError err){
-                result = "HALTED!";
-            }
-            double T1 = cpuTime();
-            eval_time += T1 - T0_eval;
-            exec_time += T1 - T0_exec;
-        }
-
-    }catch (Excp_ParseError err){
-        newLn();
-        wrLn("PARSE ERROR! %_", err.msg);
-        wrLn("EXPR: %_", expr);
-        newLn();
-        result = "HALTED!";
-    }
-    return result;
 }
 
 
@@ -523,12 +435,82 @@ void Synth::processBatch()
 #endif
 
 
+// EXPERIMENTAL
+bool Synth::hasUnreach(State const& S)
+{
+    // Check if state is testable:
+    bool ok_to_test = true;
+    uint cc = 0;
+    S.forAllCond([&](GExpr const& g){
+        if (g.kind == g_Obl && g.ins.psize() == 0){
+            if (g.type().name == a_Fun)
+                cc++;
+            else{
+                ok_to_test = false;
+                return false; }
+        }
+        if (g.kind == g_Obl && g.ins.psize() == 1){
+            ok_to_test = false;
+            return false; }
+        return true;
+    });
+    //**/if (!ok_to_test){ wrLn("CANNOT TEST:\n\t+\t+%_\t-\t-", ppFmt(S.expr(spec.pool))); }
+    if (!ok_to_test || cc == 0)
+        return false;
+
+    // Run partial expression:
+    // <<== note, we are testing redundantly here; we should mark reachable Obl and only test if there are unreachable ones (and maybe even only instrument those)
+    uint n_cov_points = 0;
+    Expr expr = S.expr(spec.pool, false, &n_cov_points);
+    assert(cc == n_cov_points);
+
+//- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Expr e_run_for_cover = Expr::Sym(Atom("run_for_cover_"), {spec.io_pairs.type[0][0], spec.io_pairs.type[0][1]}, Type(spec.runner[0].type));
+    Expr e_rlim = mxTuple({mxLit_Int(P.try_cpu_lim), mxLit_Int(P.try_mem_lim), mxLit_Int(P.try_rec_lim)});
+    Expr e_fun  = mxAppl(spec.wrapper[0], expr);
+    Expr e_arg  = mxTuple({spec.io_pairs[0], e_fun, e_rlim, spec.checker[0]});
+    Expr e_run  = mxAppl(e_run_for_cover, e_arg);
+
+    //**/wrLn("Running:\n\t+\t+%_\t-\t-", ppFmt(e_run));
+    rt.push();
+    //double T0 = cpuTime();
+    uint64 result = 0;
+    try{
+        Params_RunTime P_rt;
+        P_rt.verbose = false;
+
+        addr_t ret = rt.run(e_run, P_rt);
+        if (ret == 0){
+            wrLn("INTERNAL ERROR! Unreachability test failed at run-time.");
+            exit(1);
+        }else
+            result = rt.data(ret).val;
+    }catch (Excp_ParseError err){
+        wrLn("INTERNAL ERROR! Unreachability test failed at compile-time.");
+        exit(1);
+    }
+    //double T1 = cpuTime();
+    //**/wrLn("  coverage test time: %t", T1 - T0);      // <<== collect statistics
+
+    rt.pop();
+    uint64 mask = (n_cov_points < 64) ? (1ull << n_cov_points) - 1u : ~uint64(0);
+    //**/wrLn("  has unreach: %_   (coverage: %b)", result != mask, result);     // <<== collect statistics
+    return result != mask;
+}
+
+//=================================================================================================
+
+
 void Synth::enqueue(State S, uind from)
 {
+    /**/static bool test_unreach = getenv("UNREACH");
+    /**/if (test_unreach && hasUnreach(S)) return;
+
   #if defined(GOOGLE_CODE)
-    if (cost_fun){
+     if (cost_fun && P.randomize_costs == 0.0){
+        assert(!P.use_prune_rules || pruner.isEmpty());     // -- not implemented yet
         ::CodeBreeder::StateProto proto;
-        S.toProto(&proto);
+        S.toProto(states.size() + batch_states.size(), &proto);
 
         batch_protos .push_back(proto);
         batch_parents.push(from);
@@ -540,6 +522,9 @@ void Synth::enqueue(State S, uind from)
     }else
   #endif
     {
+        if (P.use_prune_rules && pruner.shouldPrune(S))
+            return;
+
         double cost = S.cost() * rebate_mul[from] + rebate_add[from];
         if (cost <= P.max_cost){
             uind n = states.size();
@@ -548,6 +533,7 @@ void Synth::enqueue(State S, uind from)
             parent.push(from);
             double rm = rebate_mul[from]; rebate_mul.push(rm);     // -- push takes reference, which will be invalidated on a resize if using 'rebate[from]' directly instead of temporary 'r'.
             double ra = rebate_add[from]; rebate_add.push(ra);
+            uint   ps = part_score[from]; part_score.push(ps);
             { ZZ_PTimer_Scope(synth_enum_heap_ops); Q.add(n); }
             n_enqueues++;
         }
@@ -581,9 +567,9 @@ int64 Synth::run()
   #endif
 
     // Incremental runtime:
-    P_rt.cpu_lim = P.try_cpu_lim;
-    P_rt.mem_lim = P.try_mem_lim;
-    P_rt.rec_lim = P.try_rec_lim;
+    P_rt.lim.cpu = P.try_cpu_lim;
+    P_rt.lim.mem = P.try_mem_lim;
+    P_rt.lim.rec = P.try_rec_lim;
     P_rt.verbose = false;
     try{
         rt.run(spec.prog, P_rt);    // <<== should force 'score_' to be instantiated (just add 'score_;' as a statement)
@@ -595,13 +581,14 @@ int64 Synth::run()
     // Write task information to screen:
     if (P.verbosity > 0){
         if (spec.name != "") wrLn("\a*SPEC NAME:\a* %_", spec.name);
+        if (spec.descr != "") wrLn("\a*SPEC DESCR:\a* %_", spec.descr);
         wrLn("\a*TARGET:\a* %_", spec.target);
-        wrLn("\a*POOL:\a*"); for (uint i = 0; i < pool.syms.size(); i++) wrLn("  $%>3%_:  @%_ = \a*%_\a*  \a/:%_\a/", pool.syms[i].cost, i, *pool.syms[i], pool.syms[i]->type);
+        wrLn("\a*POOL:\a*"); for (uint i = 0; i < pool.size(); i++) wrLn("  $%>3%_:  @%_ = \a*%_\a*  \a/:%_\a/", pool.cost(i), i, pool.sym(i), pool.sym(i).type);
         wrLn("\a*CONS COSTS:\a*");
-        wrLn("  $%>3%_:  %_", pool.cost_Appl , "Appl");
-        wrLn("  $%>3%_:  %_", pool.cost_Sel  , "Sel");
-        wrLn("  $%>3%_:  %_", pool.cost_Lamb , "Lamb");
-        wrLn("  $%>3%_:  %_", pool.cost_Tuple, "Tuple");
+        wrLn("  $%>3%_:  %_", pool.costAppl (), "Appl");
+        wrLn("  $%>3%_:  %_", pool.costSel  (), "Sel");
+        wrLn("  $%>3%_:  %_", pool.costLamb (), "Lamb");
+        wrLn("  $%>3%_:  %_", pool.costTuple(), "Tuple");
         if (spec.io_pairs) wrLn("\a*IO PAIRS:\a*\t+\t+\n%_\t-\t-", spec.io_pairs);      // <<== for now (just to see some representation of the problem)
         newLn();
     }
@@ -612,6 +599,7 @@ int64 Synth::run()
     parent.push(UIND_MAX);
     rebate_mul.push(1.0);
     rebate_add.push(0.0);
+    part_score.push(0);
     Q.add(0);
 
     bool   trivial_results = (P.verbosity >= 4);
@@ -622,7 +610,7 @@ int64 Synth::run()
     int64  best = INT64_MIN/4;
     uint64 n_last_report = 0;
 
-    if (P.verbosity > 0) wrLn("Expression enumaration starting...");
+    if (P.verbosity > 0) wrLn("Expression enumeration starting...");
     ZZ_PTimer_Scope(synth_enum);
     for(;;){
       #if defined(GOOGLE_CODE)
@@ -640,16 +628,20 @@ int64 Synth::run()
             reportProgress(false);
             n_last_report = n_attempts; }
 
+        uint tgt_i;
+        bool hilite = (P.dump_states || P.dump_exprs) && !S.getLast(g_Obl, tgt_i);
+
+        if (hilite) wr("EVAL: ");
         if (P.dump_states)
             wrLn("(queue size: %_) dequeued: %_", Q.size(), S);
         if (P.dump_exprs)
             wrLn("(queue size: %_) dequeued: %_", Q.size(), S.expr(pool));
 
-        uint tgt_i;
         if (S.getLast(g_Obl, tgt_i)){
             // Hardcode base heuristic for now:
             //if (P.base_rebate < 1.0 && rebate[s] == 1.0 && S[tgt_i].ins.psize() == 0){
-            if (S.size() > 1 && P.base_rebate < 1.0 && rebate_mul[s] >= P.base_rebate && S[tgt_i].ins.psize() == 0){        // <<== real heuristic should count if more io_pairs were solved!
+            //if (S.size() > 1 && P.base_rebate < 1.0 && rebate_mul[s] >= P.base_rebate && S[tgt_i].ins.psize() == 0){        // <<== real heuristic should count if more io_pairs were solved!
+            if (S.size() > 1 && P.base_rebate < 1.0                                   && S[tgt_i].ins.psize() == 0){        // <<== real heuristic should count if more io_pairs were solved!
                 bool single_obl = true;
                 S.enumAll([&](uind i, GExpr const& g) {
                     if (i != tgt_i && g.kind == g_Obl){
@@ -659,7 +651,8 @@ int64 Synth::run()
                         return true;
                 });
 
-                if (single_obl){
+//                if (single_obl)
+                {
                     Expr prog = S.expr(pool, true);
                     String result = evalExpr(prog);
                     if (strstr(result.c_str(), "HALTED!") == nullptr){  // -- if steps limit is reached while outputting result, "HALTED!" may not appear first
@@ -667,12 +660,15 @@ int64 Synth::run()
                         try{ val = stringToInt64(result); }
                         catch (...){ /**/wrLn("`` strange result: %_", result); }
 
-                        //if (val > 0){
-                        if ((rebate_mul[s] == 1.0 && val > 0) || val > 2){    // <<== need to compare to score of guy that set the rebate
-                            if (P.verbosity >= 1) wrLn("\a*\a_Basecase?\a*\a_ (%_)  %_  [score: %_]", rebate_mul[s], prog, val);
+                        if (val > 0 && val > part_score[parent[s]]){
+                        //if (rebate_mul[s] == 1.0 && val > 0){
+                        //if ((rebate_mul[s] == 1.0 && val > 0) || val > 2){
+                            if (P.verbosity >= 1) wrLn("\a*\a_Basecase?\a*\a_ (%_)  %_  [score: %_, cost: $%_]", rebate_mul[s], prog, val, latest_cost);
 
-//                            rebate_add[s] = latest_cost * rebate_mul[s] * (1 - P.base_rebate);    // -- experimental: will widen search
+                            if (P.soft_rebate)
+                                rebate_add[s] = latest_cost * rebate_mul[s] * (1 - P.base_rebate);    // -- experimental: will widen search
                             rebate_mul[s] *= P.base_rebate;
+                            part_score[s] = val;
                         }
                     }
                 }
@@ -688,9 +684,11 @@ int64 Synth::run()
             n_runs++;
 
             if (strstr(result.c_str(), "HALTED!") == nullptr){  // -- if steps limit is reached while outputting result, "HALTED!" may not appear first
-                int64 val;
-                try{ val = stringToInt64(result); }
-                catch (...){ wrLn("Program must output a single integer, not:\n\t+\t+\t+\t+%_\n\t-\t-\t-\t-", result); exit(1); }
+                int64 val = INT64_MAX;
+                if (!P.enumeration_mode){
+                    try{ val = stringToInt64(result); }
+                    catch (...){ wrLn("Program must output a single integer, not:\n\t+\t+\t+\t+%_\n\t-\t-\t-\t-", result); exit(1); }
+                }
 
                 if (val == INT64_MAX){
                     if (P.verbosity > 0){
@@ -702,6 +700,13 @@ int64 Synth::run()
                     wrLn("PRETTY-PRINTED: [%_]\t+\t+\n%_\t-\t-\n", spec.name, ppFmt(e));
                     if (P.gen_training != "")
                         outputTrainingData(P.gen_training, s, states, parent, pool);
+                    if (sol_fun){
+                        ::CodeBreeder::TrainingProto tr_proto;
+                        genTrainingData(s, states, parent, pool, tr_proto);
+                        tr_proto.set_evo_code(fmt("%_", e).c_str());
+                        tr_proto.set_evo_output(result.c_str());
+                        sol_fun(tr_proto);
+                    }
                     if (!P.keep_going)
                         return INT64_MAX;     // -- ABORT SEARCH!
 
@@ -740,13 +745,13 @@ int64 Synth::run()
         }
     }
 
+    reportProgress(true);
     if (P.verbosity > 0) wrLn("--exhaustive enumeration--");
     return best;
 }
 
 
-
-int64 synthesizeProgram(String spec_file, Params_Synth P, bool spec_file_is_text, CostFun cost_fun)
+int64 synthesizeProgram(String spec_file, Params_Synth P, bool spec_file_is_text, CostFun cost_fun, SolutionFun sol_fun)
 {
     if (P.verbosity > 0){
         wrLn("\a*==-----------------------------------------------------------------------------\a0");
@@ -757,15 +762,16 @@ int64 synthesizeProgram(String spec_file, Params_Synth P, bool spec_file_is_text
 
     Spec spec = readSpec(spec_file, spec_file_is_text); assert(spec.prog.kind == expr_Block);
     if (!spec.target){ wrLn("ERROR! Could not find 'score_' function."); exit(1); }
+    if (!spec.pool){ wrLn("ERROR! Specification file must contain symbol pool definition 'syms'."); exit(1); }
 
-    Synth synth(spec, P, cost_fun);
+    Synth synth(spec, P, cost_fun, sol_fun);
     return synth.run();
 }
 
 
 
 
-int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun)
+int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun, SolutionFun sol_fun)
 {
     CLI cli;
     addParams_Synth(cli);
@@ -774,7 +780,7 @@ int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun)
     Params_Synth P;
     setParams_Synth(cli, P);
 
-    return synthesizeProgram(prog_text, P, true, cost_fun);
+    return synthesizeProgram(prog_text, P, true, cost_fun, sol_fun);
 }
 
 

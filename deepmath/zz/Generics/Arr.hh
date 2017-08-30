@@ -84,8 +84,8 @@ template<class T> fts_macro void write_(Out& out, const Arr<T>& v) {
 
 template<class T>
 struct Hash_default<Arr<T> > {
-    uint64 hash (Arr<T> const& key)                        const { return key ? vecHash(key.slice()) : 0ull; }
-    bool   equal(Arr<T> const& key1, Array<T> const& key2) const { return (key1 == key2) || (key1 && key2 && vecEqual(key1, key2)); }
+    uint64 hash (Arr<T> const& key)                      const { return key ? vecHash(key.slice()) : 0ull; }
+    bool   equal(Arr<T> const& key1, Arr<T> const& key2) const { return (key1 == key2) || (key1 && key2 && vecEqual(key1, key2)); }
 };
 
 

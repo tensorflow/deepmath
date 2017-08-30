@@ -1,0 +1,53 @@
+##include "std.evo";
+
+data DivisionByZero = {()};
+
+fun safe_div_(n :Int, m :Int) -> Int {
+    if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
+    div_(n, m);
+};
+
+
+fun safe_mod_(n :Int, m :Int) -> Int {
+    if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
+    cond_<Int>(negative_(n), `mod_(neg_(n),m), `mod_(n,m));
+};
+
+fun positive_(n : Int) -> Bool {
+    gt_(n, 0);
+};
+
+fun nonnegative_(n : Int) -> Bool {
+    ge_(n, 0);
+};
+
+fun negative_(n : Int) -> Bool {
+    lt_(n, 0);
+};
+
+fun sum_ (list :List<Int>) -> Int {
+    list_fold_<Int, Int>(list, 0, add_);
+};
+
+fun product_ (list :List<Int>) -> Int {
+    list_fold_<Int, Int>(list, 1, mul_);
+};
+
+fun to_range_inclusive_(n : Int) -> List<Int> {
+    cond_<List<Int>>(ge_(n, 0), \{
+        cons_<Int>(n, to_range_inclusive_(sub_(n, 1)));
+    },\{
+        nil<Int>;
+    });
+};
+
+fun to_range_(n : Int) -> List<Int> {
+    cond_<List<Int>>(gt_(n, 0), \{
+        let m = sub_(n, 1);
+        cons_<Int>(m, to_range_inclusive_(m));
+    },\{
+        nil<Int>;
+    });
+};
+
+;; // end let-rec

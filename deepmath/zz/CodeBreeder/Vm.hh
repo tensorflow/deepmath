@@ -114,32 +114,77 @@ template<> fts_macro void write_(Out& out, VM::Word const& v) {   // -- assume i
     out += v.val; }
 
 
+struct ResLims {
+    uint64 cpu;
+    addr_t mem;     // -- in words ('sizeof(Word)')
+    uint   rec;
+    ResLims(uint64 cpu = UINT64_MAX, addr_t mem = 128 * 1024 * 1024, uint rec = 1000000) : cpu(cpu), mem(mem), rec(rec) {}
+};
+
+
 struct Params_RunTime {
-    uint64 cpu_lim = UINT64_MAX;
-    uint64 mem_lim = 128 * 1024 * 1024;
-    uint   rec_lim = 1000000;
-    bool   verbose = true;
+    ResLims lim;
+    bool   verbose = false;
     Out*   out     = &std_out;
 };
 
 
 // Wrapper for internal 'Vm'.
 class Vm;
+class RetVal;
 class RunTime {
     Vm* vm;
 public:
     RunTime();
    ~RunTime();
     void   tryCompile(Expr prog);   // -- try to compile, then clean up (to catch semantical error such as unresolvable "rec" definitions)
-    addr_t run(Expr prog, Params_RunTime P = Params_RunTime());
-        // -- returns address of result, or '0' if program was halted
+    addr_t run   (Expr prog, Params_RunTime P = Params_RunTime());  // -- returns address of result, or '0' if program was halted
+    RetVal runRet(Expr prog, Params_RunTime P = Params_RunTime());  // -- returns a value of type 'Type()' if program was halted
 
     void push();    // -- push current state
     void pop();     // -- restore state to last 'push()' operation
 
-    VM::Word const& data(addr_t idx);
-    VM::WTag const& tag (addr_t idx);
+    VM::Word const& data(addr_t idx) const;
+    VM::WTag const& tag (addr_t idx) const;
 };
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// RetVal -- helper class for extracting Evo return values:
+
+
+class RetVal {
+    RunTime const&  rt;
+    addr_t          addr;
+public:
+    Type            type;       // -- use 'type.name' to determine which access function/operator to use
+
+    RetVal(RunTime const& rt, addr_t addr, Type const& type) : rt(rt), addr(addr), type(type) {}
+        // -- 'addr' is return value from 'Vm::run()'
+
+    RetVal(RetVal const& s) : rt(s.rt), addr(s.addr), type(s.type) {}
+    RetVal& operator=(RetVal const& s) { this->~RetVal(); new (this) RetVal(s); return *this; }
+
+    bool     isVoid() const;                        // -- is value 'Void'?
+    double   flt   () const;                        // -- value access for Float
+    int64    val   () const;                        // -- value access (Int, Bool, Atom)
+    uint     alt   () const;                        // -- alternative# for 'OneOf's
+    operator int64 () const { return val(); }       // -- convenience operator
+
+    VM::Word word  () const;                        // -- value access (any type)
+    addr_t   clos  () const;                        // -- closure reference (Fun)
+
+    RetVal operator()(uint idx) const;              // -- tuple access; a single value can be treated as a unit tuple (note: a little expensive; can be improved if bottleneck)
+    RetVal operator[](addr_t idx) const;            // -- vector access
+    addr_t size() const;                            // -- vector size
+    RetVal operator*() const;                       // -- follow '&' or 'OneOf' reference
+    RetVal derefData(Type const& type_def) const;   // -- dereference 'data' types; pass in value from 'Inferrer::lookupType(type)'
+};
+
+
+void writeRetVal(Out& out, RetVal const& val, bool short_form);     // -- the short form is more readable but cannot be parsed back as an Evo expression
+template<> fts_macro void write_(Out& out, RetVal const& val) { writeRetVal(out, val, false); }
+template<> fts_macro void write_(Out& out, RetVal const& val, Str /*flags*/) { writeRetVal(out, val, true); }
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

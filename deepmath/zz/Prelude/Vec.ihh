@@ -67,7 +67,7 @@ public:
   //  Constructors:
 
     Vec()                          { zero(); }
-    Vec(uind size)                 { zero(); growTo(size); }
+    explicit Vec(uind size)        { zero(); growTo(size); }
     Vec(uind size, const T& pad)   { zero(); growTo(size, pad); }
     Vec(Tag_copy, T* v, uind size) { zero(); reserve(size); for (uind i = 0; i < size; i++) new (&this->data[i]) T(v[i]); this->sz = size; }
     template<class V>

@@ -20,6 +20,7 @@ limitations under the License.
 
 // Forward declare protobuf.
 namespace CodeBreeder { struct PoolProto; }
+namespace CodeBreeder { struct TrainingProto; }
 
 namespace ZZ {
 using namespace std;
@@ -34,17 +35,43 @@ extern cchar* cost_tag;         // -- symbols can be wrapped with 'cost_( <cost>
 
 
 struct Pool {
-    Vec<CExpr>  syms;
-    double  cost_Appl  = 1;
-    double  cost_Sel   = 1;
-    double  cost_Lamb  = 1;
-    double  cost_Tuple = 1;
+    Arr<CExpr>  syms;   // -- don't access directly; only public for hash function
 
     Pool() {}
-    Pool(Pool&& s) { s.syms.moveTo(syms); cost_Appl = s.cost_Appl; cost_Sel = s.cost_Sel; cost_Lamb = s.cost_Lamb; cost_Tuple = s.cost_Tuple; }
-    Pool& operator=(Pool&& s) { s.syms.moveTo(syms); cost_Appl = s.cost_Appl; cost_Sel = s.cost_Sel; cost_Lamb = s.cost_Lamb; cost_Tuple = s.cost_Tuple; return *this; }
+    Pool(Pool const& s) { syms = s.syms; }
+    Pool& operator=(Pool const& s) { syms = s.syms; return *this; }
+    Pool(Pool&& s) { syms = move(s.syms); }
+    Pool& operator=(Pool&& s) { syms = move(s.syms); return *this; }
+
+    Pool(Vec<CExpr> const& cs, double cost_Appl, double cost_Sel, double cost_Lamb, double cost_Tuple) :
+        syms(reserve_, cs.size() + 4)
+    {
+        for (uint i = 0; i < cs.size(); i++) syms[i] = cs[i];
+        syms[LAST-0].cost = cost_Appl;
+        syms[LAST-1].cost = cost_Sel;
+        syms[LAST-2].cost = cost_Lamb;
+        syms[LAST-3].cost = cost_Tuple;
+    }
+
+    explicit operator bool() const { return (bool)syms; }
 
     void toProto(::CodeBreeder::PoolProto* proto) const;  // -- will not store costs
+
+    // Read:
+    uint         size      ()       const { return syms.size() - 4; }
+    CExpr const& operator[](uint i) const { return syms[i]; }
+    Expr const&  sym       (uint i) const { return *syms[i]; }
+    double       cost      (uint i) const { return syms[i].cost; }
+
+    double costAppl () const { return syms[LAST-0].cost; }
+    double costSel  () const { return syms[LAST-1].cost; }
+    double costLamb () const { return syms[LAST-2].cost; }
+    double costTuple() const { return syms[LAST-3].cost; }
+};
+
+template <> struct Hash_default<Pool> {
+    uint64 hash (Pool const& key) const { return defaultHash(key.syms); }
+    bool   equal(Pool const& key1, const Pool& key2) const { return defaultEqual(key1.syms, key2.syms); }
 };
 
 
@@ -55,23 +82,47 @@ struct Spec {
     Atom    descr;      // -- a longer description of the task (from 'spec_descr'), defaults to empty string.
 
     Pool    pool;       // -- primitive symbols to use for synthesis
-    Type    target;     // -- synthesis target, a function from "output of 'in_wrap_'" to "input of 'out_wrap_'".
+    Type    target;     // -- synthesis target, determined by 'wrapper' function
 
     // Subexpressions of 'prog' (the whole let/rec definition, not just the RHS)
-    Expr    io_pairs;       // 'io_pairs_', must be specified
-    Expr    runner;         // 'runner_'  , must be specified
-    Expr    checker;        // 'checker_' , must be specified
-    Expr    in_wrap;        // 'in_wrap_' , defaults to identity function of type '#0 io_pairs'
-    Expr    out_wrap;       // 'out_wrap_', defaults to identity function of type '#1 io_pairs'
+    Expr    io_pairs;   // -- 'io_pairs_', must be specified
+    uint    n_io_pairs; // -- size of 'io_pairs' vector
+    Expr    runner;     // -- 'runner_'  , defaults to 'default_runner_<IN,OUT>'
+    Expr    checker;    // -- 'checker_' , defaults to 'default_checker_<IN,OUT>'
+    Expr    wrapper;    // -- 'wrapper_' , defaults to 'default_wrapper_<IN,OUT>'
 
-    uint    n_io_pairs;     // -- size of 'io_pairs' vector
+    // Used for random function generation:
+    Expr    test_vec;   // -- 'test_vec_', type: (IN->OUT) -> [Maybe<OUT>]
+    Expr    test_hash;  // -- 'test_hash_', type: (IN->OUT) -> [Int] (with special value -1 for "discard function")
+
+    Expr    init_state; // -- 'init_state_', optional.
+
+    Arr<Expr> pruning;  // -- pruning rules, from let definition of 'pruning'
 };
 
 
 Spec readSpec(String spec_file, bool spec_file_is_text, bool just_syms = false);
     // -- Normally 'spec_file' is a filename, but if 'spec_file_is_text' is TRUE then it is
     // the content of the file itself. If 'just_syms' is TRUE, only the symbol pool is
-    // parsed and return (no target or subexpressions).
+    // parsed and return (no target or subexpressions). if 'quick' is TRUE, then the parsed code
+    // is not compiled an run, which implies 'n_io_pairs' is unset (and some errors are not caught).
+
+
+//=================================================================================================
+// -- Enum from 'new_spec.evo':
+
+
+enum RunResult {
+    res_NULL   ,
+    res_RIGHT  ,
+    res_WRONG  ,
+    res_ABSTAIN,
+    res_CRASH  ,
+    res_CPU_LIM,
+    res_MEM_LIM,
+    res_REC_LIM,
+    res_SIZE   ,
+};
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

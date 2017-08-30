@@ -100,15 +100,15 @@ static Expr expandValueLambda(Expr const& e, SymTable<Expr> const& datadefs)
 
 
 namespace {
-struct RDef {
-    Expr                  expr;     // -- pointer to the rec-def expression
-    Vec<Expr>*            out;      // -- the output vector for the scope in which the definition appears
-    shared_ptr<Set<Type>> emitted;  // -- for which types has this symbol been emitted?
+struct RDef {   // -- 'rec' definition
+    Expr                       expr;     // -- pointer to the rec-def expression
+    Vec<Expr>*                 out;      // -- the output vector for the scope in which the definition appears
+    shared_ptr<Set<Arr<Type>>> emitted;  // -- for which types has this symbol been emitted?
     RDef() : out(nullptr) {}
-    RDef(Expr const& expr, Vec<Expr>& out) : expr(expr), out(&out), emitted(make_shared<Set<Type>>()) {}
+    RDef(Expr const& expr, Vec<Expr>& out) : expr(expr), out(&out), emitted(make_shared<Set<Arr<Type>>>()) {}
 };
 
-typedef Vec<Pair<shared_ptr<Set<Type>>, Type>> Emits;   // -- to store undo information for 'pop()'
+typedef Vec<Pair<shared_ptr<Set<Arr<Type>>>, Arr<Type>>> Emits;   // -- to store undo information for 'pop()'
 }
 
 
@@ -134,8 +134,8 @@ static Expr expand(Expr const& expr, SymTable<RDef>& defs, Emits& emits)
         if (defs.has(expr) && !isHidden(defs[expr])){
             if (!defs[expr].expr)  // -- 'defs[expr].expr' is false for internal symbols like 'case_'
                 return Expr(expr_Sym, expr.name, {}, Type(a_Internal, expr.type), Arr<Type>(expr.targs), expr.loc);
-            else if (!defs[expr].emitted->add(expr.type)){
-                emits.push(tuple(defs[expr].emitted, expr.type));
+            else if (!defs[expr].emitted->add(expr.targs)){
+                emits.push(tuple(defs[expr].emitted, expr.targs));
                 Expr def = defs[expr].expr;
                 Expr new_expr = def[0].targs ? typeSubst(def, def[0].targs, expr.targs) : def;
                 new_expr = Expr::RecDef(Expr(new_expr[0]), Type(new_expr.type), expand(new_expr[1], defs, emits)).setLoc(def.loc);
@@ -197,7 +197,7 @@ static Expr expand(Expr const& expr, SymTable<RDef>& defs, Emits& emits)
 }
 
 
-static Expr mangleL(Expr const& expr, SymTable<Expr>& datadefs);
+static Expr mangleL(Expr const& e, SymTable<Expr>& datadefs);
 
 
 static Expr mangle(Expr const& e, SymTable<Expr>& datadefs)
@@ -269,8 +269,12 @@ Expander::Expander()
     bi_defs.addQ(a_print_float, RDef());
     bi_defs.addQ(a_print_atom , RDef());
 
-    bi_defs.addQ(a_try  , RDef());
-    bi_defs.addQ(a_throw, RDef());
+    bi_defs.addQ(a_try   , RDef());
+    bi_defs.addQ(a_throw , RDef());
+    bi_defs.addQ(a_ttry  , RDef());
+    bi_defs.addQ(a_tthrow, RDef());
+    bi_defs.addQ(a_block , RDef());
+    bi_defs.addQ(a_break , RDef());
 
     bi_defs.addQ(a_line, RDef());
     bi_defs.addQ(a_file, RDef());

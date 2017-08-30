@@ -56,11 +56,13 @@ public:
 class Env {
     typedef SymTable<RelPos> SymTab;
 
-    Vec<uint>       active;     // -- which element in 'code[]' are we working on?
-    Vec<Vec<Instr>> codes;
-    Vec<TmpAlloc>   tmps;
-    Vec<SymTab*>    tabs;
-    Set<SymTab*>    tab_allocs;
+    Vec<uint>             active;     // -- which element in 'code[]' are we working on?
+    Vec<Vec<Instr>>       codes;
+    Vec<TmpAlloc>         tmps;
+    Vec<SymTab*>          tabs;
+    Set<SymTab*>          tab_allocs;
+    uint                  block_counter = 0;
+    Vec<Pair<Atom, Type>> blocks;
 
     Vec<Instr>& code() { return codes[active.last()]; }
     TmpAlloc&   tmp () { return tmps [active.last()]; }
@@ -157,6 +159,13 @@ public:
 
     Instr* backpatch(ILoc instr_loc){ return &codes[instr_loc.fst][instr_loc.snd]; }
 
+    void addBlock(Type const& ty){
+        Atom tag = fmt("\"__block#_%___\"", block_counter++);   // -- block names have to be unique
+        blocks.push(tuple(tag, ty)); }
+    Atom getBlockTag (uint level = 1) { return (level > blocks.size()) ? Atom() : blocks[END - level].fst; }
+    Type getBlockType(uint level = 1) { return (level > blocks.size()) ? Type() : blocks[END - level].snd; }
+        // -- 1=last block, 2=second last block etc.
+
     // Symbol table:
     SymTab& symTab() { return *tab(); }
     void    addQ(Atom name, RelPos pos) { symTab().addQ(name, pos); }       // }- for convenience
@@ -247,7 +256,7 @@ ZZ_Initializer(repr_size, 10){
 
 
 // Returns the number of 'uint's needed to represent an object of type 'type'.
-static uint reprSize(Type const& type)
+uint reprSize(Type const& type)
 {
     if (type.name == a_Tuple){
         uint sz = 0;
@@ -433,7 +442,7 @@ static void emitRecs(Env& E, Array<Expr const> block)
         if (e.kind == expr_RecDef){
             assert(!e[0].targs);
             Atom sym = e[0].name;
-            defs.addQ(sym, &e);                      // -- for evaluation order computation
+            defs.addQ(sym, &e);     // -- for evaluation order computation
 
             RelPos pos = E.reserve(reprSize(e[0].type));
             sympos.addQ(sym, pos);  // -- storage location
@@ -669,13 +678,79 @@ static void emitCode(Env& E, Expr const& expr, RelPos result, SymTable<RelPos>* 
         break; }
 
     case expr_Appl:{
+        // Special builtins 'write_', 'ttry_', 'tthrow_' must take arguments:
         if (expr[0].kind == expr_Sym && expr[0].name == a_write){
             // Special builtin 'write_' must take argument:
             RelPos arg = E.reserve(reprSize(expr[1]));
             emitCode(E, expr[1], arg);
             emitWrite(E, expr[1].type, arg, expr[1].loc, /*top_tuple*/true);
-            break; }
+            break;
 
+        }else if (expr[0].kind == expr_Sym && expr[0].name == a_ttry){
+            Expr const& arg = expr[1];
+            if (arg.kind != expr_Tuple || arg[0].kind != expr_Lit)
+                throw Excp_ParseError(fmt("%_: Tagged try must have constant Atom as first argument.", expr.loc));
+            Atom a_tagged_type(fmt("%_:%_", arg[0].name, arg.type[2][0]));
+
+            int tt_sz = reprSize(arg.type[2][0]);
+            RelPos try_fun   = E.reserve(closure_sz);
+            RelPos catch_fun = E.reserve(closure_sz);
+            RelPos excp_tmp  = E.reserve(1);
+            emitCode(E, expr[1][1], try_fun);
+            emitCode(E, expr[1][2], catch_fun);
+            E.emit(i_ALLOC, tt_sz, excp_tmp);
+            E.emit(i_TRY, reprSize(expr.type), result, try_fun, catch_fun, +a_tagged_type, excp_tmp, tt_sz);
+            break;
+
+        }else if (expr[0].kind == expr_Sym && expr[0].name == a_tthrow){
+            Expr const& arg = expr[1];
+            if (arg.kind != expr_Tuple || arg[0].kind != expr_Lit)
+                throw Excp_ParseError(fmt("%_: Tagged throw must have constant Atom as first argument.", expr.loc));
+            Atom a_tagged_type(fmt("%_:%_", arg[0].name, expr[0].type[0][1]));
+
+            uint thr_sz = reprSize(arg[1]);     // -- thrown object
+            RelPos thr = E.reserve(thr_sz);
+            emitCode(E, arg[1], thr);
+            E.emit(i_THROW, thr_sz, +a_tagged_type, thr);
+            break;
+
+        }else if (expr[0].kind == expr_Sym && expr[0].name == a_block){
+            // Emit 'ttry_<T,T>(tag, \{ code }, \ret{ret})':
+            Type ty_T = expr[1].type;
+            E.addBlock(ty_T);
+            Type ty_ttry = Type(a_Fun, {Type(a_Tuple, {Type(a_Atom), Type(a_Fun, {Type(a_Void), ty_T}), Type(a_Fun, {ty_T, ty_T})}), ty_T});    // -- "(Atom, Void->T, T->T) -> T"
+            Expr e_thunk = mxLamb(mxTuple({}), expr[1]);
+            Expr e_ident = mxLamb(mxSym(a_x, ty_T), mxSym(a_x, ty_T));
+            Expr e = mxAppl(mxSym(a_ttry, ty_ttry), mxTuple({mxLit_Atom(E.getBlockTag()), e_thunk, e_ident}));
+            emitCode(E, e, result);
+            break;
+
+        }else if (expr[0].kind == expr_Sym && expr[0].name == a_break){
+            Expr const& arg = expr[1];
+            uint        lev;
+            Expr const* val;
+            if (arg.type.name == a_Tuple){
+                if (arg.kind != expr_Tuple || arg.size() != 2 || arg[0].type.name != a_Int || arg[0].kind != expr_Lit)
+                    throw Excp_ParseError(fmt("%_: Keyword 'break' takes a direct argument of type 'T' or '(Int, T)' where the integer must be a literal 1, 2, 3...", arg.loc));
+                lev = stringToInt64(arg[0].name);
+                val = &arg[1];
+            }else{
+                lev = 1;
+                val = &arg;
+            }
+            Atom tag = E.getBlockTag(lev);
+            if (!tag) throw Excp_ParseError(fmt("%_: Breaking out of more blocks than declared.", arg.loc));
+            Type ty_T = E.getBlockType(lev);
+            if (val->type != ty_T) throw Excp_ParseError(fmt("%_: Breaking with wrong type '%_'. Should be '%_'.", arg.loc, val->type, ty_T));
+            // Emit 'tthrow_<(),T>(tag, val)'
+            Type ty_tthrow = Type(a_Fun, {Type(a_Tuple, {Type(a_Atom), ty_T}), Type(a_Void)});
+            Expr e_arg = mxTuple({mxLit_Atom(tag), *val});
+            Expr e = mxAppl(mxSym(a_tthrow, ty_tthrow), e_arg);
+            emitCode(E, e, result);
+            break;
+        }
+
+        // Normal function application:
         uint arg_sz = reprSize(expr[1]);
         uint ret_sz = reprSize(expr);
         RelPos fun = E.reserve(closure_sz);

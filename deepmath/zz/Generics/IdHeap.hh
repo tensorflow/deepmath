@@ -4,25 +4,25 @@
 //| Author(s)   : Niklas Een
 //| Module      : Generics
 //| Description : A heap with supports for increase/decrease of the key (priority) of its elements.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
-//| The elements of the heap is of type 'ElemT', typically an integer type. The template 
+//|
+//| The elements of the heap is of type 'ElemT', typically an integer type. The template
 //| argument 'T2Id' should convert an 'ElemT' to an integer ID of type 'uind' by implementing:
-//| 
+//|
 //|    uind operator()(const ElemT& elem) const;
-//| 
+//|
 //| The default implementation is to just cast 'ElemT' to 'uind' which works in most cases.
-//| 
-//| The keys (here called priorities) of the heap is of type 'Prio_'. It must be a type with 
+//|
+//| The keys (here called priorities) of the heap is of type 'Prio_'. It must be a type with
 //| 'operator <' defined (as well as copy-constructor and assignment operator).
-//| 
+//|
 //| The priorities of the elements are stored (and updated) externally. Default is to assume
 //| the priorities to be stored in a 'Vec', but you can pass a different type as 'Prio_Vec'.
 //| Note that this vector is indexed by 'ElemT', so you need to make sure 'Prio_Vec' supports:
-//| 
+//|
 //|    Prio_ operator[](Elem elem) const;
 //|________________________________________________________________________________________________
 
@@ -35,21 +35,25 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-template<class Prio_, bool max_heap = false, class Prio_Vec = Vec<Prio_>, class ElemT = uind, class T2Id = MkIndex_default<ElemT> >
+template<class Prio_, bool max_heap = false, class Prio_Vec = Vec<Prio_>, class ElemT = uind, class T2Id = MkIndex_default<ElemT>, bool stable = false>
 class IdHeap : public NonCopyable {
 protected:
     Vec<uind>   id2pos;
     Vec<ElemT>  heap;
     T2Id        get_id;
 
-    bool lessThan(Prio_ x, Prio_ y) {
-        return max_heap ? (x < y) : (y < x); }
+    bool lessThan(Prio_ x, Prio_ y, uind i, uind j) {
+        return stable ? (max_heap ? (x < y || (x == y && i < j)) : (y < x || (x == y && j < i))) :
+                        (max_heap ? (x < y) : (y < x));
+    }
 
     void siftUp(uind pos, ElemT elem) {
-        Prio_  prio_elem = (*prio)[get_id(elem)];
+        uind   id_elem = get_id(elem);
+        Prio_  prio_elem = (*prio)[id_elem];
         while (pos > 0){
             uind parent = (pos - 1) >> 1;
-            if (lessThan((*prio)[get_id(heap[parent])], prio_elem)){
+            uind id_parent = get_id(heap[parent]);
+            if (lessThan((*prio)[id_parent], prio_elem, id_parent, id_elem)){
                 set(pos, heap[parent]);
                 pos = parent;
             }else
@@ -58,13 +62,15 @@ protected:
         set(pos, elem); }
 
     void siftDown(uind pos, ElemT elem) {
-        Prio_  prio_elem = (*prio)[get_id(elem)];
+        uind   id_elem = get_id(elem);
+        Prio_  prio_elem = (*prio)[id_elem];
         for (;;){
             uind child = (pos << 1) + 1;
             if (child >= heap.size() - 1){
                 if (child == heap.size() - 1){
                     // No right-child
-                    if (lessThan(prio_elem, (*prio)[get_id(heap[child])])){
+                    uind id_child = get_id(heap[child]);
+                    if (lessThan(prio_elem, (*prio)[id_child], id_elem, id_child)){
                         set(pos, heap[child]);
                         pos = child;
                     }else
@@ -74,9 +80,12 @@ protected:
                     break;
             }else{
                 // Two children
-                if (lessThan((*prio)[get_id(heap[child])], (*prio)[get_id(heap[child+1])]))
+                uind id_child0 = get_id(heap[child]);
+                uind id_child1 = get_id(heap[child+1]);
+                if (lessThan((*prio)[id_child0], (*prio)[id_child1], id_child0, id_child1))
                     child++;    // -- now index the larger child.
-                if (lessThan(prio_elem, (*prio)[get_id(heap[child])])){
+                uind id_child = get_id(heap[child]);
+                if (lessThan(prio_elem, (*prio)[id_child], id_elem, id_child)){
                     set(pos, heap[child]);
                     pos = child;
                 }else
@@ -147,6 +156,12 @@ public:
             assert(id2pos[i] == UINT_MAX || (id2pos[i] < heap.size() && uind(get_id(heap[id2pos[i]])) == i));
     }
 };
+
+
+#if (__cplusplus >= 201103L)
+template<class Prio_, bool max_heap = false, class Prio_Vec = Vec<Prio_>, class ElemT = uind, class T2Id = MkIndex_default<ElemT> >
+using StableIdHeap = IdHeap<Prio_, max_heap, Prio_Vec, ElemT, T2Id, true>;
+#endif
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

@@ -33,6 +33,10 @@ bool isType(Str str);
 bool isTVar(Str str);
 bool isVar (Str str);
 
+extern Atom a_x;
+extern Atom a_y;
+extern Atom a_z;
+
 extern Atom a_case;
 extern Atom a_ite;
 extern Atom a_assign;
@@ -55,11 +59,15 @@ extern Atom a_print_atom;
 
 extern Atom a_try;
 extern Atom a_throw;
+extern Atom a_ttry;
+extern Atom a_tthrow;
+extern Atom a_block;
+extern Atom a_break;
 
 extern Atom a_underscore;
 extern Atom a_false;
 extern Atom a_true;
-extern Atom a_appl_op;
+extern Atom a_appl_op;      // -- pseudo-operator, outside the operator alphabet
 
 extern Atom a_line;
 extern Atom a_file;
@@ -258,14 +266,16 @@ struct Expr {
     static Expr MetaIf(Expr&& cond, Expr&& tt, Expr&& ff) { return Expr(expr_MetaIf, Atom(), {move(cond), move(tt), move(ff)}); }
     static Expr MetaErr(Atom msg = Atom())                { return Expr(expr_MetaErr, msg); }
 
-    // Comparison: (we make no distinction between null and empty 'Arr's, but *type* is part of expression)
-    bool operator==(Expr const& e) const {
-        return type == e.type
-            && kind == e.kind
+    bool untypedEqualTo(Expr const& e) const {
+        return kind == e.kind
             && name == e.name
             && vecEqual(+targs, +e.targs)
             && vecEqual(+exprs, +e.exprs);
     }
+
+    // Comparison: (we make no distinction between null and empty 'Arr's, but *type* is part of expression)
+    bool operator==(Expr const& e) const {
+        return type == e.type && untypedEqualTo(e); }
 
     bool operator<(Expr const& e) const {
         if (type < e.type) return true;
@@ -285,7 +295,8 @@ void writeExpr(Out& out, Expr const& e, bool is_arg = false);
 template<> fts_macro void write_(Out& out, Expr const& e) { writeExpr(out, e); }
 template<> fts_macro void write_(Out& out, Expr const& e, Str flags) { assert(flags[0] == 'a'); writeExpr(out, e, true); }
 
-String ppFmt(Expr const& expr);     // -- pretty-print format
+String ppFmtI(Expr const& expr, uint indent_level);     // -- pretty-print format
+inline String ppFmt(Expr const& expr) { return ppFmtI(expr, 0); }
 
 
 // Hashing (ignores 'loc' field).
@@ -304,6 +315,16 @@ inline Array<Expr const> tupleSlice(Expr const& expr) {    // -- unify treatment
 
 // mx = make expression
 
+// Make sure 'e' is of type 'expr_Block' so that it fits the body of a lambda.
+inline Expr wrapBlock(Expr const& e) {
+    if (e.kind == expr_Block) return e;
+    Vec<Expr> es(1, e);
+    return Expr::Block(es).setType(Type(e.type));
+}
+
+
+inline Expr mxSym(Atom name, Type type) { return Expr::Sym(name, {}, move(type)); }
+
 inline Expr mxLit_Bool(bool   v) { return Expr::Lit(v ? a_true : a_false, Type(a_Bool)); }
 inline Expr mxLit_Int (int64  v) { return Expr::Lit(Atom(fmt("%_", v)), Type(a_Int)); }
 inline Expr mxLit_Atom(Atom   v) { return Expr::Lit(v, Type(a_Atom)); }
@@ -312,14 +333,34 @@ inline Expr mxLit_Atom(Atom   v) { return Expr::Lit(v, Type(a_Atom)); }
 inline Expr mxTuple(Vec<Expr> const& es) {
     Vec<Type> ts(reserve_, es.size());
     for (Expr const& e : es) ts.push(Type(e.type));
-    return Expr::Tuple(es).setType(Type(a_Tuple, ts));
+    return Expr::Tuple(es).setType(ts.size() == 0 ? Type(a_Void) : Type(a_Tuple, ts));
 }
 
 
 inline Expr mxAppl(Expr fun, Expr arg) {
     assert(fun.type.name == a_Fun);
     assert(arg.type == fun.type[0]);
-    return Expr::Appl(move(fun), move(arg)).setType(Type(fun.type[1]));
+    Type type = fun.type[1];
+    return Expr::Appl(move(fun), move(arg)).setType(Type(type));
+}
+
+
+inline Expr mxBlock(Vec<Expr> const& es) {
+    Type t = (es.size() == 0 || es[LAST].kind == expr_RecDef) ? Type(a_Void) : Type(es[LAST].type);
+    return Expr::Block(es).setType(move(t));
+}
+
+
+inline bool isPattern(Expr const& expr) {
+    return expr.kind == expr_Sym
+        || (expr.kind == expr_Tuple && trueForAll(expr, [](Expr const& e){ return isPattern(e); }));
+}
+
+
+inline Expr mxLamb(Expr head, Expr body) {
+    assert(isPattern(head));
+    Type t = Type(a_Fun, {Type(head.type), Type(body.type)});
+    return Expr::Lamb(move(head), wrapBlock(body), move(t));
 }
 
 
@@ -403,7 +444,7 @@ public:
                 for (Atom a : p->locals()){ wr("- %_ =", a); valPrinter(p->ref(a)); newLn(); }
         }
     }
-    void dumpVal(bool skip_global = false) { dump(skip_global, [](T const& t){ std_out += t; }); }
+    void dumpVal(bool skip_global = false) const { dump(skip_global, [](T const& t){ std_out += t; }); }
 
     // Undo:
     uind size() const { return syms.size(); }
@@ -427,6 +468,7 @@ template<> fts_macro void write_(Out& out, TSubst const& v) {
 
 
 Type typeSubst(Type const& type, Arr<Type> const& from, Arr<Type> const& into);
+Type typeSubst(Type const& type, Vec<TSubst> const& subs);
 Expr typeSubst(Expr expr, Arr<Type> const& from, Arr<Type> const& into);
 Expr typeSubst(Expr expr, Vec<TSubst> const& subs);
 
@@ -466,6 +508,11 @@ struct Cost {
 
 typedef Cost<Type> CType;
 typedef Cost<Expr> CExpr;
+
+template<> struct Hash_default<CExpr> {
+    uint64 hash (CExpr const& e) const { return defaultHash(tuple(*e, e.cost)); }
+    bool   equal(CExpr const& e1, CExpr const& e2) const { return defaultEqual(*e1, *e2) && defaultEqual(e1.cost, e2.cost); }
+};
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

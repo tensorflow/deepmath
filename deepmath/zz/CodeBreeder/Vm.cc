@@ -141,6 +141,8 @@ Bin_Define(urshift_ , "(Int, Int) -> Int") { ret[0].val = uint64(arg[0].val) >> 
 Bin_Define(bit_and_ , "(Int, Int) -> Int") { ret[0].val = arg[0].val & arg[1].val; }
 Bin_Define(bit_or_  , "(Int, Int) -> Int") { ret[0].val = arg[0].val | arg[1].val; }
 Bin_Define(bit_xor_ , "(Int, Int) -> Int") { ret[0].val = arg[0].val ^ arg[1].val; }
+Bin_Define(abs_     , "Int -> Int") { ret[0].val = abs(arg[0].val); }
+Bin_Define(sign_    , "Int -> Int") { ret[0].val = (arg[0].val > 0) ? 1 : (arg[0].val < 0) ? -1 : 0; }
 
 Bin_Define(f_neg_, "Float -> Float")          { ret[0].flt = -arg[0].flt; }
 Bin_Define(f_add_, "(Float, Float) -> Float") { ret[0].flt = arg[0].flt + arg[1].flt; }
@@ -148,6 +150,8 @@ Bin_Define(f_sub_, "(Float, Float) -> Float") { ret[0].flt = arg[0].flt - arg[1]
 Bin_Define(f_mul_, "(Float, Float) -> Float") { ret[0].flt = arg[0].flt * arg[1].flt; }
 Bin_Define(f_div_, "(Float, Float) -> Float") { ret[0].flt = arg[0].flt / arg[1].flt; }
 Bin_Define(f_mod_, "(Float, Float) -> Float") { ret[0].flt = fmod(arg[0].flt, arg[1].flt); }
+Bin_Define(f_abs_, "Float -> Float") { ret[0].flt = fabs(arg[0].flt); }
+Bin_Define(f_log_, "Float -> Float") { ret[0].flt = log(arg[0].flt); }
 
 Bin_Define(ge_, "(Int, Int) -> Bool") { ret[0].val = arg[0].val >= arg[1].val; }
 Bin_Define(gt_, "(Int, Int) -> Bool") { ret[0].val = arg[0].val >  arg[1].val; }
@@ -162,9 +166,18 @@ Bin_Define(f_le_, "(Float, Float) -> Bool") { ret[0].val = arg[0].flt <= arg[1].
 Bin_Define(f_lt_, "(Float, Float) -> Bool") { ret[0].val = arg[0].flt <  arg[1].flt; }
 Bin_Define(f_eq_, "(Float, Float) -> Bool") { ret[0].val = arg[0].flt == arg[1].flt; }
 Bin_Define(f_ne_, "(Float, Float) -> Bool") { ret[0].val = arg[0].flt != arg[1].flt; }
+Bin_Define(f_hash_, "Float -> Int") { ret[0].val = arg[0].val; }
+Bin_Define(f_bit_eq_, "(Float, Float) -> Bool") { ret[0].val = arg[0].val == arg[1].val; }     // -- must be used together with hash
 
+Bin_Define(a_ge_, "(Atom, Atom) -> Bool") { ret[0].val = strcmp(Atom(arg[0].val).c_str(), Atom(arg[1].val).c_str()) >= 0; }
+Bin_Define(a_gt_, "(Atom, Atom) -> Bool") { ret[0].val = strcmp(Atom(arg[0].val).c_str(), Atom(arg[1].val).c_str()) >  0; }
+Bin_Define(a_le_, "(Atom, Atom) -> Bool") { ret[0].val = strcmp(Atom(arg[0].val).c_str(), Atom(arg[1].val).c_str()) <= 0; }
+Bin_Define(a_lt_, "(Atom, Atom) -> Bool") { ret[0].val = strcmp(Atom(arg[0].val).c_str(), Atom(arg[1].val).c_str()) <  0; }
 Bin_Define(a_eq_, "(Atom, Atom) -> Bool") { ret[0].val = arg[0].val == arg[1].val; }
 Bin_Define(a_ne_, "(Atom, Atom) -> Bool") { ret[0].val = arg[0].val != arg[1].val; }
+Bin_Define(a_hash_, "Atom -> Int") { ret[0].val = arg[0].val; }
+Bin_Define(a_size_, "Atom -> Int") { ret[0].val = Str(Atom(arg[0].val)).size(); }
+Bin_Define(a_get_ , "(Atom, Int) -> Int") { Str text = Str(Atom(arg[0].val)); uint64 idx = arg[1].val; ret[0].val = (idx < text.size()) ? text[idx] : 0; }
 
 Bin_Define(int_to_flt_, "Int -> Float") { ret[0].flt = arg[0].val; }
 Bin_Define(flt_to_int_, "Float -> Int") { ret[0].val = arg[0].flt; }
@@ -183,6 +196,9 @@ struct VmLimits {
     VmLimits(uint64 cpu = 0, addr_t mem = 0, uint rec = 0) : cpu(cpu), mem(mem), rec(rec) {}
 };
 
+template<> fts_macro void write_(Out& out, VmLimits const& v) {
+    wr(out, "VmLimits{cpu=%_; mem=%_; rec=%_}", v.cpu, v.mem, v.rec); }
+
 
 struct VmExcp {
     Atom     type_text = Atom();
@@ -194,6 +210,10 @@ struct VmExcp {
     uint     arg_sz    = 0;
     VmLimits lim;       // -- resource limits are handled as a special try/catch with 'type_text == "run_"'
 };
+
+template<> fts_macro void write_(Out& out, VmExcp const& v){
+    wr(out, "VmExcp{type_text=%_; frame=%_; closure=%_; ret=%_; ret_sz=%_; arg=%_; arg_sz=%_; lim=%_}",
+        v.type_text, v.frame, v.closure, v.ret, v.ret_sz, v.arg, v.arg_sz, v.lim); }
 
 
 class Vm {
@@ -240,7 +260,7 @@ class Vm {
 public:
     Vm();
     addr_t  compile(Expr prog, bool just_try);
-    addr_t  run(addr_t start_addr, uint64 mem_lim, uint64 cpu_lim, uint rec_lim);
+    addr_t  run(addr_t start_addr, ResLims const& lim);
 
     void    push();
     void    pop ();
@@ -314,11 +334,15 @@ Vm::Vm()
     tab0.addQ(a_print_float, RelPos(b_INTERNAL, 13));
     tab0.addQ(a_print_atom , RelPos(b_INTERNAL, 14));
 
-    tab0.addQ(a_try  , RelPos(b_INTERNAL, 15));
-    tab0.addQ(a_throw, RelPos(b_INTERNAL, 16));
+    tab0.addQ(a_try   , RelPos(b_INTERNAL, 15));
+    tab0.addQ(a_throw , RelPos(b_INTERNAL, 16));
+    tab0.addQ(a_ttry  , RelPos(b_INTERNAL, 17));
+    tab0.addQ(a_tthrow, RelPos(b_INTERNAL, 18));
+    tab0.addQ(a_block , RelPos(b_INTERNAL, 19));
+    tab0.addQ(a_break , RelPos(b_INTERNAL, 20));
 
-    tab0.addQ(a_line , RelPos(b_INTERNAL, 17));
-    tab0.addQ(a_file , RelPos(b_INTERNAL, 18));
+    tab0.addQ(a_line , RelPos(b_INTERNAL, 21));
+    tab0.addQ(a_file , RelPos(b_INTERNAL, 22));
 
     // Set up data pointers:
     addr_t init_size = data.size() + (stress_gc ? 10 : 10000);
@@ -646,7 +670,7 @@ bool Vm::vecResize(uint elem_sz, RelPos vec_, int64 new_sz, int64 mem_lim)
     }else if (new_sz < sz){
         // Shrink:
         if (new_sz < 0) return false;       // -- will abort program
-        clear(vecHead(0) + new_sz, elem_sz * (sz - new_sz));
+        clear(vecHead(0) + elem_sz * new_sz, elem_sz * (sz - new_sz));
         vecHead(1) = new_sz;
     }
     return true;
@@ -688,7 +712,7 @@ bool Vm::throwExcp(Atom type_text, Word const* src_data, WTag const* src_tag, ui
 
 
 // NOTE! 'mem_lim0' is given in bytes, but will inside this function be converted to 'Word's.
-addr_t Vm::run(addr_t start_addr, uint64 mem_lim0, uint64 cpu_lim0, uint rec_lim0)
+addr_t Vm::run(addr_t start_addr, ResLims const& lim)
 {
     ZZ_PTimer_Scope(vm_run);
 
@@ -705,7 +729,7 @@ addr_t Vm::run(addr_t start_addr, uint64 mem_lim0, uint64 cpu_lim0, uint rec_lim
     VmExcp excp;
     excp.type_text = a_run;
     excp.frame     = icall.size();
-    excp.lim       = VmLimits{cpu_lim0, addr_t(mem_lim0 / sizeof(Word)), rec_lim0};
+    excp.lim       = VmLimits{lim.cpu, lim.mem, lim.rec};
     excp_stack.push(excp);
 
     // Reset statistics:
@@ -958,7 +982,7 @@ addr_t Vm::run(addr_t start_addr, uint64 mem_lim0, uint64 cpu_lim0, uint rec_lim
             uint   ret_sz = code[ip].n_words;
             VmExcp excp;
             excp.type_text = Atom(code[ip+4].off);
-            excp.frame     = icall.size();
+            excp.frame     = icall.size() + 1;
             excp.closure   = absPos(code[ip+3].pos);
             excp.ret       = ret;
             excp.ret_sz    = ret_sz;
@@ -1014,19 +1038,25 @@ addr_t Vm::run(addr_t start_addr, uint64 mem_lim0, uint64 cpu_lim0, uint rec_lim
             if (!throwExit(ExitData(a_cpu_lim, Atom(), steps, lim), ip)){
                 haltMsg(fmt("Exceeded CPU-limit of %_ steps.", lim));
                 result = RelPos(b_ZERO, 0);
-                goto Done; } }
+                goto Done; }
+        }
+
         if (mem_used > excp_stack[LAST].lim.mem){
             uint64 lim = excp_stack[LAST].lim.mem;
             if (!throwExit(ExitData(a_mem_lim, Atom(), mem_used, lim), ip)){
                 haltMsg(fmt("Exceeded memory limit of %^DB.", lim * sizeof(Word)));
                 result = RelPos(b_ZERO, 0);
-                goto Done; } }
+                goto Done; }
+            gc(0, false);
+        }
+
         if (icall.size() > excp_stack[LAST].lim.rec){
             uint64 lim = excp_stack[LAST].lim.rec;
             if (!throwExit(ExitData(a_rec_lim, Atom(), icall.size(), lim), ip)){
                 haltMsg(fmt("Exceeded recursion depth of %_.", excp_stack[LAST].lim.rec));
                 result = RelPos(b_ZERO, 0);
-                goto Done; } }
+                goto Done; }
+        }
 
         // Force periodic GC to monitor memory:
         gc_count--;
@@ -1147,7 +1177,7 @@ addr_t RunTime::run(Expr prog, Params_RunTime P)
     double T0c = cpuTime();
     double T0r = realTime();
     vm->out = P.out;
-    addr_t ret = vm->run(start, P.mem_lim, P.cpu_lim, P.rec_lim);
+    addr_t ret = vm->run(start, P.lim);
     vm->out->flush();
 
     if (P.verbose){
@@ -1164,10 +1194,210 @@ addr_t RunTime::run(Expr prog, Params_RunTime P)
 }
 
 
-void RunTime::push()           { vm->push(); }
-void RunTime::pop ()           { vm->pop (); }
-Word const& RunTime::data(addr_t idx) { return vm->readData(idx); }
-WTag const& RunTime::tag (addr_t idx) { return vm->readTag (idx); }
+RetVal RunTime::runRet(Expr prog, Params_RunTime P)
+{
+    addr_t addr = run(prog, P);
+    /**/Dump(addr);
+    return (addr == 0) ? RetVal(*this, addr, Type()) : RetVal(*this, addr, prog.type);
+}
+
+
+void RunTime::push() { vm->push(); }
+void RunTime::pop () { vm->pop (); }
+Word const& RunTime::data(addr_t idx) const { return vm->readData(idx); }
+WTag const& RunTime::tag (addr_t idx) const { return vm->readTag (idx); }
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// RetVal:
+
+
+bool RetVal::isVoid() const {
+    return type.name == a_Void; }
+
+
+double RetVal::flt() const {
+    assert(type.name == a_Float);
+    return rt.data(addr).flt; }
+
+
+int64 RetVal::val() const {
+    assert(type.name == a_Bool || type.name == a_Int || type.name == a_Atom);
+    return rt.data(addr).val; }
+
+
+uint RetVal::alt() const {
+    return rt.data(addr).val; }
+
+
+VM::Word RetVal::word() const {
+    return rt.data(addr); }
+
+
+addr_t RetVal::clos() const {
+    assert(type.name == a_Fun);
+    return rt.data(addr+1).val; }
+
+
+RetVal RetVal::operator()(uint idx) const
+{
+    Array<Type const> ts = tupleSlice(type);
+    assert(idx < ts.size());
+    addr_t a = addr;
+    for (uint i = 0; i < idx; i++) a += reprSize(ts[i]);
+    if (type.name != a_Tuple){
+        assert(idx == 0);
+        return RetVal(rt, a, type);
+    }else
+        return RetVal(rt, a, type[idx]);
+}
+
+
+RetVal RetVal::operator[](addr_t idx) const
+{
+    assert(type.name == a_Vec);
+    addr_t head     = rt.data(addr).val;
+    addr_t vec_data = rt.data(head).val;
+    addr_t vec_size = rt.data(head+1).val;
+    assert(idx < vec_size);
+    return RetVal(rt, vec_data + idx * reprSize(type[0]), type[0]);
+}
+
+
+addr_t RetVal::size() const
+{
+    assert(type.name == a_Vec);
+    addr_t head = rt.data(addr).val;
+    return rt.data(head+1).val;
+}
+
+
+RetVal RetVal::operator*() const
+{
+    if (type.name == a_Ref)
+        return RetVal(rt, rt.data(addr).val, type[0]);
+    else if (type.name == a_OneOf)
+        return RetVal(rt, rt.data(addr+1).val, type[rt.data(addr).val]);
+    else
+        assert(false);
+}
+
+
+RetVal RetVal::derefData(Type const& type_def) const {
+    return RetVal(rt, rt.data(addr+1).val, type_def[rt.data(addr).val]); }
+
+
+//=================================================================================================
+
+
+// Print 'data' types defined in 'std.evo'.
+static
+void writeRetVal_stdEvo(Out& out, RetVal const& val, bool short_form)
+{
+    static Atom a_List("List");
+    static Atom a_Maybe("Maybe");
+
+    if (val.type.name == a_List){
+        Type type_def = Type(a_OneOf, {Type(a_Void), Type(a_Tuple, {Type(val.type[0]), Type(val.type)})}); // -- this type must match code in 'std.evo'.
+        if (short_form)
+            out += '{';
+        else
+            out += "(list_[:", val.type[0], ' ';
+        RetVal p = val;
+        bool first = true;
+        for(;;){
+            p = p.derefData(type_def);
+            if (p.isVoid()) break;
+
+            if (first) first = false;
+            else out += ", ";
+
+            writeRetVal(out, p(0), short_form);
+            p = p(1);
+        }
+        if (short_form)
+            out += '}';
+        else
+            out += "])";
+
+    }else if (val.type.name == a_Maybe){
+        if (val.alt() == 0){
+            if (short_form)
+                out += '*';
+            else
+                out += "none<", val.type[0], '>';
+        }else{
+            Type type_def = Type(a_OneOf, {Type(a_Void), {Type(val.type[0])}}); // -- this type must match code in 'std.evo'.
+            RetVal p = val.derefData(type_def);
+            if (short_form)
+                writeRetVal(out, p, short_form);
+            else{
+                out += "(some_ ";
+                writeRetVal(out, p, short_form);
+                out += ')';
+            }
+        }
+
+    }else{
+        wrLn("INTERNAL ERROR! Cannot print value of type '%_'", val.type);
+        exit(1);
+    }
+
+}
+
+
+void writeRetVal(Out& out, RetVal const& val, bool short_form)
+{
+    if (!val.type){
+        out += "fail<?>";
+    }else if (val.type.name == a_Void){
+        out += "()";
+    }else if (val.type.name == a_Bool){
+        out += val ? "_1" : "_0";
+    }else if (val.type.name == a_Int){
+        out += val.val();
+    }else if (val.type.name == a_Float){
+        String tmp; tmp += val.flt();
+        if (!has(tmp, '.') && !has(tmp, 'e') && !has(tmp, 'E')) tmp += ".0";    // -- make it parse as a Float
+        out += tmp;
+        // <<== +-nan/inf not handled here! (or in Parser.cc)
+    }else if (val.type.name == a_Atom){
+        out += '"', Atom(val), '"';
+    }else if (val.type.name == a_OneOf){
+        out += '.', val.type, '.', val.val(), '(',
+        writeRetVal(out, *val, short_form);
+        out += ')';
+    }else if (val.type.name == a_Tuple){
+        out += '(';
+        for (uint i = 0; i < val.type.size(); i++){
+            if (i != 0) out += ", ";
+            writeRetVal(out, val(i), short_form);
+        }
+        out += ')';
+    }else if (val.type.name == a_Ref){
+        out += "&(",
+        writeRetVal(out, *val, short_form);
+        out += ')';
+    }else if (val.type.name == a_Vec){
+        if (short_form)
+            out += '[';
+        else
+            out += "[:", val.type[0], ' ';
+        for (addr_t i = 0; i < val.size(); i++){
+            if (i != 0) out += ", ";
+            writeRetVal(out, val[i], short_form);
+        }
+        out += ']';
+    }else if (val.type.name == a_Fun){
+        Word w = val.word();
+        addr_t a = val.clos();
+        if (isCodePtr(w))
+            wr(out, "closure(fun=%_, clos=%_)", decodeCodePtr(w), a);
+        else
+            wr(out, "builtin(ptr=%p)", w.bin);
+    }else
+        writeRetVal_stdEvo(out, val, short_form);
+}
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

@@ -37,17 +37,8 @@ ZZ_PTimer_Add(synth_enum_prepareEnqueue);
 static bool canProduce(Type const& t0, Type const& t) {
   if (t == t0) return true;
   if (t0.name == a_Fun) return canProduce(t0[1], t);
-  if (t0.name == a_Tuple)
-    return !trueForAll(t0, [t](Type const& s) { return !canProduce(s, t); });
+  if (t0.name == a_Tuple) return !trueForAll(t0, [t](Type const& s) { return !canProduce(s, t); });
   return false;
-}
-
-
-// Make sure 'e' is of type 'expr_Block' so that it fits the body of a lambda.
-static Expr wrapBlock(Expr const& e) {
-    if (e.kind == expr_Block) return e;
-    Vec<Expr> es(1, e);
-    return Expr::Block(es).setType(Type(e.type));
 }
 
 
@@ -135,9 +126,14 @@ double State::cost() const
 }
 
 
-Expr State::expr(Pool const& P, bool obl_as_fail) const
+Expr State::expr(Pool const& P, bool obl_as_fail, uint* n_cov_points) const
 {
     ZZ_PTimer_Scope(synth_enum_State_expr);
+
+    static Atom a_obl("?");
+    static Atom a_adapt("?<");
+    static Atom a_coverage("\"coverage\"");
+    static Atom a_x("x");
 
     PArr<GExpr> const& me = *this;
 
@@ -165,6 +161,7 @@ Expr State::expr(Pool const& P, bool obl_as_fail) const
 
     // Create expression:
     Vec<Expr> memo(me.size());
+    if (n_cov_points) *n_cov_points = 0;
 
     function<Expr(uint)> build;
 
@@ -188,18 +185,26 @@ Expr State::expr(Pool const& P, bool obl_as_fail) const
             }
         }
         // Create block expression:
-        for (uint j : shared)
-            block.push(Expr::RecDef(Expr(memo[j]), Type(me[j].type()), build(j)));
+        for (uint j : shared){
+            Expr e_def = build(j);
+            if (e_def.type.name == a_Fun && e_def.kind != expr_Lamb){
+                // If RHS is function type but not a 'Lamb' expression, apply reverse eta-reduction.
+                //     e_def :A->B   ~>  \:A->B a { e_def a }
+                // (Evo currently has limited support for mutual recursion in rec-lets)
+                Expr e_x = mxSym(a_x, e_def.type[0]);
+                e_def = mxLamb(e_x, mxAppl(e_def, e_x));
+            }
+            assert(e_def.type == me[j].type());
+            block.push(Expr::RecDef(Expr(memo[j]), Type(me[j].type()), move(e_def)));
+        }
         block.push(buildMemo(i));
         return (block.size() == 1) ? block[0] : Expr::Block(block).setType(Type(block[LAST].type));
     };
 
-    Atom a_obl("?");
-    Atom a_adapt("?<");
     build = [&](uint i) -> Expr {
         GExpr g = me[i];
         switch (g.kind){
-        case g_Pool : return *P.syms[~g.ins[0]];
+        case g_Pool : return P.sym(~g.ins[0]);
         case g_PI   : return Expr::Sym(fmt("a%_", i), {}, Type(g.type()));
         case g_Id   : return buildMemo(g.ins[0]);
         case g_Appl : return Expr::Appl(buildMemo(g.ins[0]), buildMemo(g.ins[1])).setType(Type(g.type()));
@@ -207,7 +212,25 @@ Expr State::expr(Pool const& P, bool obl_as_fail) const
         case g_Tuple: return Expr::Tuple(map(g.ins, [&](uint j){ return buildMemo(j); })).setType(Type(g.type()));
         case g_Lamb : return Expr::Lamb(build(g.ins[0]), wrapBlock(buildTop(g.ins[1])), Type(g.type()));
         case g_Obl  :
-            if (obl_as_fail){
+            if (n_cov_points){
+                // Experimental coverage conversion:
+                //     Adapt(x) : Int   ~~>  x; fail<Int>
+                //     Obl      : A->B  ~~>  \a{tthrow_<B,Int>("coverage", #n)}
+                //     (other obligations not allowed)
+                if (g.ins.psize() == 0){
+                    // Create coverage point:
+                    assert(g.type().name == a_Fun);
+                    Expr e_tthrow = Expr::Sym(a_tthrow, {Type(g.type()[1]), Type(a_Int)}, Type(a_Fun, Type(a_Tuple, {Type(a_Atom), Type(a_Int)}), Type(g.type()[1])));  // -- type is: (Atom, Int) -> B
+                    Expr e_body   = mxAppl(e_tthrow, mxTuple({mxLit_Atom(a_coverage), mxLit_Int(*n_cov_points)}));
+                    Expr e_head   = Expr::Sym(a_underscore, {}, Type(g.type()[0]));
+                    *n_cov_points += 1;
+                    return mxLamb(e_head, wrapBlock(e_body));
+                }else{
+                    Expr e_sub = buildMemo(g.ins[0]);
+                    Expr e_fail = Expr::Sym(a_fail, {g.type()}, Type(g.type()));
+                    return mxBlock({e_sub, e_fail});
+                }
+            }else if (obl_as_fail){
                 return Expr::Sym(a_fail, {g.type()}, Type(g.type()));
             }else{
                 if (g.ins.psize() == 0) return Expr::Sym(a_obl, {}, Type(g.type()));
@@ -217,6 +240,40 @@ Expr State::expr(Pool const& P, bool obl_as_fail) const
     };
 
     return buildTop(0);
+}
+
+
+// S[i] <  S[j]  ~>  -1
+// S[i] == S[j]  ~>  0
+// S[i] >  S[j]  ~>  +1
+// incomparable  ~>  INT_MIN
+int State::order_(uint i, uint j, uint& count) const
+{
+    if (count == 0) return INT_MIN;
+    count--;
+    if (i == j) return 0;
+
+    PArr<GExpr> const& me = *this; assert(me.size() <= 64);
+    GExpr const& g = me[i];
+    GExpr const& h = me[j];
+
+    if (g.kind == g_Obl || h.kind == g_Obl) return INT_MIN;
+    if (g.kind < h.kind) return -1;
+    if (g.kind > h.kind) return +1;
+    if (g.ins.psize() < h.ins.psize()) return -1;
+    if (g.ins.psize() > h.ins.psize()) return +1;
+
+    for (uint n = 0; n < g.ins.psize(); n++){
+        if ((int)g.ins[n] < 0){
+            assert(h.ins[n] < 0);
+            if (g.ins[n] > h.ins[n]) return -1;     // -- intentionally '>' because negative encoding
+            if (g.ins[n] < h.ins[n]) return +1;
+        }else{
+            int result = order_(g.ins[n], h.ins[n], count);
+            if (result != 0) return result;
+        }
+    }
+    return 0;
 }
 
 
@@ -253,6 +310,20 @@ static bool checkSimpleLeftRecursion(State const& S, uint i, IntMap<uint,uint>& 
 }
 
 
+/*
+<<==
+Selecting grom a constructed tuple seems redundant, maybe ban this too?
+
+  n16:Int$1=*Sel[#0, 19];
+    n17:Int$1=*Appl[18, 19];
+    n18:(Int, Int)->Int$1=*Pool[#3];
+  n19:(Int, Int)$1=*Tuple[21, 20];
+    n20:Int$0=*Id[3];
+    n21:Int$0=*Id[3];
+    n22:<null-type>$0=*End[];
+*/
+
+
 // Will modify 'S' if scope has been finished (no outstanding obligations). Returns TRUE if resulting
 // state is good and shuold be enqueued, FALSE if state should be discarded (e.g. contains left recursion).
 static bool prepareEnqueue(State& S, IntMap<uint,uint>& used, Pool const& pool, bool must_use_formals, bool force_recursion)
@@ -264,6 +335,14 @@ static bool prepareEnqueue(State& S, IntMap<uint,uint>& used, Pool const& pool, 
         if (ge.kind == g_Obl && ge.ins.psize() == 0 && ge.type().name == a_Void)
             S = S.set(i, GExpr(g_Tuple, {}, Type(a_Void), 0.0));
     });
+
+#if 1   // EXPERIMENTAL
+    for (uint i = 0; i < S.size(); i++){
+        GExpr const& ge = S[i];
+        if (ge.kind == g_Sel && S[ge.ins[1]].kind == g_Tuple)
+            return false;
+    }
+#endif
 
     // Check that if scope was closed, all function arguments were used:
     uint scope_i;
@@ -307,10 +386,45 @@ static bool prepareEnqueue(State& S, IntMap<uint,uint>& used, Pool const& pool, 
 }
 
 
+bool hasRecursion(State const& S)
+{
+    IntMap<uint,uint> used;
+    bool was_recursive = false;
+    checkSimpleLeftRecursion(S, 0, used, was_recursive);
+    return was_recursive;
+}
+
+
+bool usesToplevelFormals(State const& S)
+{
+    GExpr const& g_top = S[0];
+    if (g_top.kind != g_Lamb) return false;
+
+    uint i_form = g_top.ins[0];
+    GExpr const& g_form = S[i_form]; assert(g_form.kind == g_Tuple);
+
+    for (uint pi : g_form.ins){
+        assert(S[pi].kind == g_PI);
+        for (uint i = 0; i < S.size(); i++){
+            GExpr const& g = S[i];
+            if (g.kind == g_Id && g.ins[0] == pi) goto Found;
+            if (g.kind == g_Appl && (g.ins[0] == pi || g.ins[1] == pi)) goto Found;
+            if (g.kind == g_Tuple && i != i_form){
+                for (uint j : g.ins)
+                    if (j == pi) goto Found;
+            }
+        }
+        return false;
+      Found:;
+    }
+    return true;
+}
+
+
 //=================================================================================================
 // -- expand one obligation:
 
-static bool inFanin(uint tgt, const State& S, uint n, IntSeen<uint>& seen) {
+static bool inFanin(uint tgt, State const& S, uint n, IntSeen<uint>& seen) {
   if (n == tgt) return true;
   if (!seen.add(n)) {
     for (uint m : +S[n].ins)
@@ -321,7 +435,7 @@ static bool inFanin(uint tgt, const State& S, uint n, IntSeen<uint>& seen) {
 
 
 // Is 'tgt' in the transitive fanin of 'n'?
-static bool inFanin(uint tgt, State S, uint n) {
+static bool inFanin(uint tgt, State const &S, uint n) {
     IntSeen<uint> seen;
     return inFanin(tgt, S, n, seen); }
 
@@ -332,8 +446,6 @@ inline bool reusableExpr(GExprKind kind) {
     return kind == g_Appl || kind == g_Tuple || kind == g_Sel || kind == g_Lamb || kind == g_PI; }
 
 
-// NOTE! It is 'enqueue's responsibility to check that a closed scope meets the desired
-// constraints and to remove the scope delimiter.
 void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqueue0, Params_SynthEnum const& P_, uint64* expansion_attempts)
 {
     ZZ_PTimer_Scope(synth_enum_expandOne);
@@ -345,7 +457,7 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
             enqueue0(S);
     };
 
-    double min_adapt_cost = min_(pool.cost_Sel, pool.cost_Appl);
+    double min_adapt_cost = min_(pool.costSel(), pool.costAppl());
 
     GExpr f = S[tgt_i];     // -- f=final=target
     if (f.ins.psize() > 0){
@@ -355,7 +467,7 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
         if (e.type().name == a_Tuple){
             for (uint k = 0; k < e.type().size(); k++){
                 if (e.type()[k] == f.type())
-                    enqueue(S.set(tgt_i, GExpr(g_Sel, {~k, in_i}, e.type()[k], pool.cost_Sel)));
+                    enqueue(S.set(tgt_i, GExpr(g_Sel, {~k, in_i}, e.type()[k], pool.costSel())));
                 else if (canProduce(e.type()[k], f.type())){
                     State S1 = S.push(GExpr(g_Sel, {~k, in_i}, e.type()[k]));
                     enqueue(S1.set(tgt_i, GExpr(g_Obl, {S.size()}, f.type(), min_adapt_cost)));
@@ -365,21 +477,21 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
         }else{ assert(e.type().name == a_Fun);
             State S1 = S.push(GExpr(g_Obl, {}, e.type()[0], 0.0));    // <<== type-based lower bound computation goes here
             if (e.type()[1] == f.type()){
-                State S2 = S1.set(tgt_i, GExpr(g_Appl, {in_i, S.size()}, e.type()[1], pool.cost_Appl));
+                State S2 = S1.set(tgt_i, GExpr(g_Appl, {in_i, S.size()}, e.type()[1], pool.costAppl()));
                 enqueue(S2); }
             else{
-                State S2 = S1.push(GExpr(g_Appl, {in_i, S.size()}, e.type()[1], pool.cost_Appl));
+                State S2 = S1.push(GExpr(g_Appl, {in_i, S.size()}, e.type()[1], pool.costAppl()));
                 enqueue(S2.set(tgt_i, GExpr(g_Obl, {S1.size()}, f.type(), min_adapt_cost))); }
         }
 
     }else{
         // General obligation, resolved from symbol pool:
-        for (uint i = 0; i < pool.syms.size(); i++){
-            Type const& type = pool.syms[i]->type;
+        for (uint i = 0; i < pool.size(); i++){
+            Type const& type = pool.sym(i).type;
             if (type == f.type())
-                enqueue(S.set(tgt_i, GExpr(g_Pool, {~i}, type, pool.syms[i].cost, /*internal*/true)));
+                enqueue(S.set(tgt_i, GExpr(g_Pool, {~i}, type, pool.cost(i), /*internal*/true)));
             else if (canProduce(type, f.type())){
-                State S1 = S.push(GExpr(g_Pool, {~i}, type, pool.syms[i].cost, /*internal*/true));
+                State S1 = S.push(GExpr(g_Pool, {~i}, type, pool.cost(i), /*internal*/true));
                 enqueue(S1.set(tgt_i, GExpr(g_Obl, {S.size()}, f.type())));
             }
         }
@@ -406,7 +518,7 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
             }
             uint head_i = S.size(); S = S.push(GExpr(g_Tuple, tup_elems, f.type()[0], 0.0, /*internal*/true));    // -- note: we allow tuples of size one here; will be removed by expression construction
             uint body_i = S.size(); S = S.push(GExpr(g_Obl, {}, f.type()[1], 0.0, /*internal*/true));
-            enqueue(S.set(tgt_i, GExpr(g_Lamb, {head_i, body_i}, f.type(), pool.cost_Lamb, /*internal*/P_.ban_recursion)));
+            enqueue(S.set(tgt_i, GExpr(g_Lamb, {head_i, body_i}, f.type(), pool.costLamb(), /*internal*/P_.ban_recursion)));
 
         }else if (f.type().name == a_Tuple){
             Vec<uint> obls;
@@ -422,7 +534,7 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
             }
             reverse(obls);
           #endif
-            enqueue(S.set(tgt_i, GExpr(g_Tuple, obls, f.type(), pool.cost_Tuple)));
+            enqueue(S.set(tgt_i, GExpr(g_Tuple, obls, f.type(), pool.costTuple())));
         }
     }
 }

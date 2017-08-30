@@ -19,7 +19,7 @@
 //|   fts_macro                 -- Use this for "function template specializations".
 //|   Iter_Var( <base-name> )   -- Get the iterator variable from a iteration macro.
 //|   Null_Method( <type> )     -- Used inside class decl. to define 'null()' and 'bool_type' oper.
-//|   Range_For                 -- Define 'begin()' and 'end()' in terms of 'size()' and 'op[]'.
+//|   Std_Array_Funcs           -- Define 'begin()' and 'end()' in terms of 'size()' and 'op[]'.
 //|________________________________________________________________________________________________
 
 namespace ZZ {

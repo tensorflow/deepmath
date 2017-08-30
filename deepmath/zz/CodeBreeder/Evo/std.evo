@@ -7,13 +7,13 @@
 
 ##op(!  , pre, -4, not_);
 
-##op(<~ , inl, -5, lshift_);
-##op(~> , inl, -5, rshift_);
-##op(~>>, inl, -5, urshift_);
+##op(%<< , inl, -5, lshift_);
+##op(%>> , inl, -5, rshift_);
+##op(%>>>, inl, -5, urshift_);
 
-##op(&  , inl, -10, bit_and_);
-##op(^| , inl, -11, bit_xor_);
-##op(|  , inl, -12, bit_or_);
+##op(%& , inl, -10, bit_and_);
+##op(%^ , inl, -11, bit_xor_);
+##op(%| , inl, -12, bit_or_);
 
 ##op(*  , inl, -15, mul_);
 ##op(/  , inl, -15, div_);
@@ -29,10 +29,12 @@
 
 ##op(<  , inl, -30, lt_);
 ##op(<= , inl, -30, le_);
-##op(== , inl, -30, eq_);
-##op(!= , inl, -30, ne_);
 ##op(>= , inl, -30, ge_);
 ##op(>  , inl, -30, gt_);
+##op(== , inl, -30, equal_);
+##op(!= , inl, -30, not_equal_);
+##op(*< , inl, -30, lex_lt_);
+##op(*<=, inl, -30, lex_le_);
 
 ##op($== , inl, -30, a_eq_);
 ##op($!= , inl, -30, a_ne_);
@@ -46,12 +48,18 @@
 ##op(*= , inr, -50, assign_mul_);
 ##op(/= , inr, -50, assign_div_);
 ##op(%= , inr, -50, assign_mod_);
+##op(|= , inr, -50, assign_bit_or_);
+##op(&= , inr, -50, assign_bit_and_);
+##op(^= , inr, -50, assign_bit_xor_);
 
 fun assign_add_(n :&Int, m :Int) { n = ^n + m };
 fun assign_sub_(n :&Int, m :Int) { n = ^n - m };
 fun assign_mul_(n :&Int, m :Int) { n = ^n * m };
 fun assign_div_(n :&Int, m :Int) { n = ^n / m };
 fun assign_mod_(n :&Int, m :Int) { n = ^n % m };
+fun assign_bit_and_(n :&Int, m :Int) { n = ^n %& m };
+fun assign_bit_xor_(n :&Int, m :Int) { n = ^n %^ m };
+fun assign_bit_or_ (n :&Int, m :Int) { n = ^n %| m };
 
 
 // Vector ops:
@@ -78,9 +86,10 @@ data List<T> = {(), (T, List<T>)};
 rec  nil<T> : List<T> = List<T>.0();
 rec  cons_<T> : (T, List<T>) -> List<T> = List<T>.1;
 
-type Maybe<T> = {(), T};
+data Maybe<T> = {(), T};
 rec none<T>  : Maybe<T>      = Maybe<T>.0 ();
 rec some_<T> : T -> Maybe<T> = Maybe<T>.1;
+
 
 data Hide<A> = {A};
 fun hide_<A>(vis :A) ->Hide<A> { Hide<A>.0 vis };
@@ -104,6 +113,11 @@ type Excp_Exit = (Atom, Atom, Int, Int);   // -- '(exitcode, atom, index, size)'
     //   - null_deref
     //   - vec_op (in which case 'atom' is one of: get, set, growby, resize)
 
+data Break = {()};  // -- depricated; use 'block{ ... break <value>; };'
+fun throw_break_() -> Void { throw_<(), Break>(Break.0()) };
+
+data For_All_ = {()};  // -- just a tag; should introduce Lisp-style blocks. (done now, should rewrite code that uses this)
+
 
 //=================================================================================================
 // Lists:
@@ -111,10 +125,17 @@ type Excp_Exit = (Atom, Atom, Int, Int);   // -- '(exitcode, atom, index, size)'
 
 rec list_empty_<T> : List<T> -> Bool = \list { case_<&List<T>, Bool>(list, \_{_1}, \_{_0}); };
 
-fun list_fold_<A, B>(iter :List<A>, init :B, reducer_ :(A,B)->B) -> B {
+fun list_foldl_<A, B>(iter :List<A>, init :B, reducer_ :(A,B)->B) -> B {
     case_(iter
     ,\      { init }
-    ,\(x,xs){ list_fold_(xs, reducer_(x, init), reducer_) }
+    ,\(x,xs){ list_foldl_(xs, reducer_(x, init), reducer_) }
+    );
+};
+
+fun list_fold_<A, B>(iter :List<A>, init :B, reducer_ :(A,B)->B) -> B { // foldr
+    case_(iter
+    ,\      { init }
+    ,\(x,xs){ reducer_(x, list_fold_(xs, init, reducer_)) }
     );
 };
 
@@ -174,6 +195,17 @@ fun list_reverse_<A>(xs :List<A>) -> List<A> {
         case_(xs, \{acc}, \(y,ys){ rev_(ys, cons_(y, acc)) });
     };
     rev_(xs, nil<A>);
+};
+
+
+fun list_concat_<A>(xs :List<A>, ys :List<A>) -> List<A> {
+    case_(xs, `ys, \(a, as){
+        cons_(a, list_concat_(as, ys)); });
+};
+
+fun in_list_<A>(x :A, xs :List<A>) -> Bool {
+    case_(xs, `_0, \(y, ys){
+        cond_(x == y, `_1, `in_list_(x, ys))});
 };
 
 
@@ -242,6 +274,26 @@ fun push_<T>(xs :[T], x :T) {
 };
 
 
+
+fun pop_<T>(xs :[T]) {
+    growby_(xs, -1);
+};
+
+
+fun pop_c_<T>(xs :[T]) -> T {
+    let ret = xs @ -1;
+    growby_(xs, -1);
+    ret;
+};
+
+
+fun vec_swap_<T>(xs :[T], i :Int, j :Int) {
+    let tmp = xs @ i;
+    set_(xs, i, xs @ j);
+    set_(xs, j, tmp)
+};
+
+
 fun for_vec_<T>(vec :[T], f :Int->()){
     fun iter_(i :Int) {
         if_(lt_(i, size_<T>(vec)), \{
@@ -268,6 +320,15 @@ fun concat_to_<A>(list1 :[A], list2 :[A]) {
 };
 
 
+fun vec_map_append_<A,B>(ys :[B], xs :[A], f :A->B) -> [B] {
+    let off = size_(ys);
+    resize_<B>(ys, off + size_<A>(xs));
+    for_vec_<A>(xs, \i{
+        set_<B>(ys, off + i, f(xs @ i)); });
+    ys;
+};
+
+
 fun vec_map_<A,B>(xs :[A], f :A->B) -> [B] {
     let ys : [B];
     resize_<B>(ys, size_<A>(xs));
@@ -284,15 +345,6 @@ fun apply_all_<A>(xs :[A], f :A->()) {
 };
 
 
-/*
-fun list_<A>(xs :[A]) -> List<A> {
-    let list = &nil<A>;
-    for_down_(size_<A>(xs), \i{
-        assign_<List<A>>(list, cons_<A>(get_<A>(xs, i), ^list)); });
-    ^list;
-};
-*/
-
 fun list_<A>(xs :[A]) -> List<A> {
     let list = &nil<A>;
     for_down_(size_ xs, \i{
@@ -301,7 +353,6 @@ fun list_<A>(xs :[A]) -> List<A> {
 };
 
 
-data For_All_ = {()};  // -- just a tag; should introduce Lisp-style blocks.
 fun for_all_<A>(vec :[A], pred_ :A->Bool) -> Bool {
     try_<Bool, For_All_>(\{
         apply_all_(vec, \x{
@@ -310,6 +361,13 @@ fun for_all_<A>(vec :[A], pred_ :A->Bool) -> Bool {
     },\_{
         _0;
     });
+};
+
+
+fun vec_<A>(xs :List<A>) -> [A] {
+    let ret : [A];
+    list_apply_all_(xs, \a{ push_(ret, a) });
+    ret;
 };
 
 
@@ -329,6 +387,146 @@ fun exists_<A>(vec :[A], pred_ :A->Bool) -> Bool {
 
 fun intvec_has_(xs :[Int], n :Int) -> Bool {
     exists_(xs, \x{ eq_(x, n) }); };
+
+
+fun vec_fold_<A, B>(vec :[A], init :B, reducer_ :(A,B)->B) -> B {   // foldr
+    let acc = &init;
+    let i = &(size_ vec);
+    while_(`^i > 0, \{
+        i -= 1;
+        acc = reducer_(vec @ ^i, ^acc);
+    });
+    ^acc;
+};
+
+
+//=================================================================================================
+// Equality:
+
+
+fun equal_<A>(x :A, y :A) -> Bool {
+    ##if (match<A, Int>, eq_(x, y),
+    ##if (match<A, Atom>, a_eq_(x, y),
+    ##if (match<A, Float>, f_eq_(x, y),
+    ##if (match<A, Bool>, equiv_(x, y),
+    ##if (match<A, (A1,A2)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y),
+    ##if (match<A, (A1,A2,A3)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y) && `equal_(#2 x,  #2 y),
+    ##if (match<A, [B]>, vec_equal_(x, y),
+    ##if (match<A, List<B>>, list_equal_(x, y),
+    ##if (match<A, Maybe<B>>, maybe_equal_(x, y),
+        ##error "Equality not defined for type")))))))));
+};
+
+fun maybe_equal_<T>(x :Maybe<T>,  y :Maybe<T>) -> Bool {
+    case_(x
+    ,\  { case_(y, `_1, \_{_0}) }
+    ,\sx{ case_(y, `_0, \sy{ sx == sy }) }
+    );
+};
+
+fun vec_equal_<A>(xs :[A], ys :[A]) -> Bool {
+    size_(xs) == size_(ys) && \{
+        try_<Bool, Break>(\{
+            for_vec_(xs, \i{
+                if_(!equal_(xs @ i, ys @ i), `throw_break_()); });
+            _1;
+        },\_{
+            _0
+        });
+    };
+};
+
+fun list_equal_<A>(xxs :List<A>, yys :List<A>) -> Bool {
+    case_(xxs, `list_empty_ yys, \(x, xs){
+        case_(yys, `_0, \(y, ys){
+            equal_(x, y) && `list_equal_(xs, ys); }); });
+};
+
+fun not_equal_<A>(x :A, y :A) -> Bool { not_(equal_(x, y)) };
+
+
+/*
+fun vec_lt_<A>(xs :[A], ys :[A]) -> Bool {
+    block<Bool>{
+        let sz = size_(ys);
+        for_vec_(xs, \i{
+            if_(i == sz, `break _0);
+            if_(xs @ i *< ys @ i, `break _1);
+            if_(ys @ i *< xs @ i, `break _0);
+        });
+        size_(xs) < sz;
+    };
+};
+*/
+// For now:
+fun vec_lt_<A>(xs :[A], ys :[A]) -> Bool {
+    try_<Bool, Bool>(\{
+        let sz = size_(ys);
+        for_vec_(xs, \i{
+            if_(i == sz, `throw_<Void,Bool>(_0));
+            if_(xs @ i *< ys @ i, `throw_<Void,Bool>(_1));
+            if_(ys @ i *< xs @ i, `throw_<Void,Bool>(_0));
+        });
+        size_(xs) < sz;
+    },\x{x});
+};
+
+fun list_lt_<A>(xxs :List<A>, yys :List<A>) -> Bool {
+    case_(yys, `_0, \(y, ys){
+        case_(xxs, `_1, \(x, xs){
+            cond_(x *< y, `_1, \{
+                cond_(x == y, `list_lt_(xs, ys), `_0)})})});
+};
+
+
+fun lex_lt_<A>(x :A, y :A) -> Bool {
+    ##if (match<A, Int>, lt_(x, y),
+    ##if (match<A, Atom>, a_lt_(x, y),
+    ##if (match<A, Float>, f_lt_(x, y),
+    ##if (match<A, Bool>, ite_(x, _0, ite_(y, _1, _0)),
+    ##if (match<A, (A1,A2)>, lex_lt_(#0 x,  #0 y) || `(equal_(#0 x,  #0 y) && `lex_lt_(#1 x,  #1 y)),
+    ##if (match<A, (A1,A2,A3)>, lex_lt_(#0 x,  #0 y) || `(equal_(#0 x,  #0 y) && (`lex_lt_(#1 x,  #1 y) || `(equal_(#1 x, #1 y) && `lex_lt_(#2 x, #2 y)))),
+    ##if (match<A, [B]>, vec_lt_(x, y),
+    ##if (match<A, List<B>>, list_lt_(x, y),
+        ##error "Equality not defined for type"))))))));
+};
+
+fun lex_le_<A>(x :A, y :A) -> Bool { !(y *< x) };
+
+
+//=================================================================================================
+// Hashing:
+
+
+/*
+fun equal_<A>(x :A, y :A) -> Bool {
+    ##if (match<A, Int>, eq_(x, y),
+    ##if (match<A, Atom>, a_eq_(x, y),
+    ##if (match<A, Float>, f_eq_(x, y),
+    ##if (match<A, Bool>, equiv_(x, y),
+    ##if (match<A, (A1,A2)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y),
+    ##if (match<A, (A1,A2,A3)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y) && `equal_(#2 x,  #2 y),
+    ##if (match<A, [B]>, vec_equal_(x, y),
+    ##if (match<A, List<B>>, list_equal_(x, y),
+    ##if (match<A, Maybe<B>>, maybe_equal_(x, y),
+        ##error "Equality not defined for type")))))))));
+};
+*/
+
+fun hmix_(x :Int, y :Int) -> Int { x %^ (1177585495240697 * y) };
+
+fun hash_<A>(x :A) -> Int {
+    ##if (match<A, Int>, x,
+    ##if (match<A, Atom>, a_hash_(x),
+    ##if (match<A, Float>, f_hash_(x),
+    ##if (match<A, Bool>, ite_(x, 0, 1),
+    ##if (match<A, (A1,A2)>, hmix_(hash_(#0 x), hash_(#1 x)),
+    ##if (match<A, (A1,A2,A3)>, hmix_(hash_(#0 x), hmix_(hash_(#1 x), hash_(#2 x))),
+    ##if (match<A, [B]>, vec_fold_(x, hash_(size_ x), \(t, h){ hmix_(hash_(t), h) }),
+    ##if (match<A, List<B>>, list_fold_(x, hash_(list_len_ x), \(t, h){ hmix_(hash_(t), h) }),
+    ##if (match<A, Maybe<B>>, case_(x, `0, \t{ 942068396192177 %^ hash_(t) }),
+        ##error "Hash not defined for type")))))))));
+};
 
 
 //=================================================================================================
@@ -351,6 +549,8 @@ fun min_(x :Int, y :Int) -> Int { ite_<Int>(lt_(x, y), x, y); };
 fun max_(x :Int, y :Int) -> Int { ite_<Int>(gt_(x, y), x, y); };
 
 
+fun apply_<A,B>(f_ :A->B, x :A) -> B { f_ x };
+
 fun compose_<A,B,C>(f_ :B->C, g_ :A->B) -> A->C {
     fun h_(a :A) -> C { f_(g_ a) };
     h_;
@@ -367,8 +567,8 @@ fun starter_<A>(val :A, f_ :(A, A)->A) -> A { f_(val, default<A>) };    // -- hi
 
 
 fun curried_lt_(n :Int) -> (Int->Bool) {
-  fun f_(m :Int) -> Bool { lt_(n, m) };
-  f_;
+    fun f_(m :Int) -> Bool { lt_(n, m) };
+    f_;
 };
 
 
@@ -378,32 +578,6 @@ fun curried_lt_(n :Int) -> (Int->Bool) {
 
 fun nl_(){ print_atom_ "\n"; };
 
-fun wr_vec_<A>(as :[A]) {
-    write_("[");
-    let i = &0;
-    for_((), `lt_(^i, size_(as)), `assign_(i, inc_ ^i), \{
-        if_(is_nonzero_ ^i, `write_(", "));
-        write_("", get_(as, ^i));
-    });
-    write_("]");
-};
-
-fun wr_list_<A>(list :List<A>) {
-    fun wr_tail_(tail :List<A>) {
-        case_(tail, `(), \(x, xs){
-            write_(", ", x);
-            wr_tail_ xs;
-        });
-    };
-
-    write_("{");
-    case_(list, `(), \(x, xs){
-        write_("", x);
-        wr_tail_ xs;
-    });
-    write_("}");
-};
-
 
 // Example:
 //    write_("xs=", $xs, "\n");
@@ -411,12 +585,40 @@ fun wr_list_<A>(list :List<A>) {
 ##op($ , pre, -100, default_formatter_);
 
 
+fun wr_vec_<A>(as :[A]) {
+    write_("[");
+    let i = &0;
+    for_((), `lt_(^i, size_(as)), `assign_(i, inc_ ^i), \{
+        if_(is_nonzero_ ^i, `write_(", "));
+        write_("", $get_(as, ^i));
+    });
+    write_("]");
+};
+
+fun wr_list_<A>(list :List<A>) {
+    fun wr_tail_(tail :List<A>) {
+        case_(tail, `(), \(x, xs){
+            write_(", ", $x);
+            wr_tail_ xs;
+        });
+    };
+
+    write_("{");
+    case_(list, `(), \(x, xs){
+        write_("", $x);
+        wr_tail_ xs;
+    });
+    write_("}");
+};
+
+
 fun default_formatter_<T>(x :T) -> ()->() {
     ##if (match<T, [A]>, `wr_vec_(x),
     ##if (match<T, List<A>>, `wr_list_(x),
     ##if (match<T, (A,B)>, `write_("(", $ #0 x, ", ", $ #1 x, ")"),
     ##if (match<T, (A,B,C)>, `write_("(", $ #0 x, ", ", $ #1 x, ", ", $ #2 x, ")"),
-    `write_("", x)))));
+    ##if (match<T, Maybe<A>>, `case_(x, `write_ "none", \s{ write_("some_ ", $s); }),
+    `write_("", x))))));
 };
 
 

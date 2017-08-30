@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ZZ__CodeBreeder__TypeInference_hh
-#define ZZ__CodeBreeder__TypeInference_hh
+#ifndef ZZ__CodeBreeder__DeriveGenealogy_hh
+#define ZZ__CodeBreeder__DeriveGenealogy_hh
 
-#include "Types.hh"
+#include "SynthSpec.hh"
+#include "SynthEnum.hh"
 
 namespace ZZ {
 using namespace std;
@@ -25,26 +26,7 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-struct Inferrer_data;
-
-struct Inferrer {
-    Inferrer_data* data;
-
-    Inferrer();
-   ~Inferrer();
-
-    void push();
-    void pop();
-
-    void inferTypes(Expr& prog); // -- recursively add types to expression 'prog'
-
-    Type lookupType(Type const& type);  // -- expands 'data' and 'type' definitions
-};
-
-
-inline void inferTypes(Expr& prog) {
-    Inferrer I;
-    I.inferTypes(prog); }
+Vec<ENUM::State> deriveGenealogy(Expr const& target, Pool pool);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

@@ -4,11 +4,11 @@
 //| Author(s)   : Niklas Een
 //| Module      : Prelude
 //| Description : Base exceptions for the ZZ framework.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //|________________________________________________________________________________________________
 
 namespace ZZ {
@@ -29,7 +29,20 @@ struct Excp_Msg : Excp {
 
 
 #define Declare_Exception(name) struct name : Excp_Msg { name(String msg_) : Excp_Msg(msg_) {} };
-    // -- introduce a derived "synonym" to 'Excp_Msg'. 
+    // -- introduce a derived "synonym" to 'Excp_Msg'.
+
+
+// If 'exitcode' is 0, then throw the given exception, else print 'err_pfx' followed by
+// 'excp.msg' and exit with the given exitcode.
+template<class EXCP> inline void throwOrAbort(int exitcode, cchar* err_pfx, EXCP excp) ___noreturn;
+template<class EXCP> inline void throwOrAbort(int exitcode, cchar* err_pfx, EXCP excp)
+{
+    if (exitcode != 0){
+        wrLn("%_%_", err_pfx, excp.msg);
+        exit(exitcode);
+    }else
+        throw excp;
+}
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

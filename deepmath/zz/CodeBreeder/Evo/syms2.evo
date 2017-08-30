@@ -2,9 +2,18 @@ let syms = (
     case_<List<Int>, Bool>,
     case_<List<Int>, Int>,
     case_<List<Int>, List<Int>>,
-
     cond_<Int>,
     cond_<List<Int>>,
+    nil<Int>,
+    cons_<Int>,
+
+    case_<List<(Int, Int)>, Bool>,
+    case_<List<(Int, Int)>, (Int, Int)>,
+    case_<List<(Int, Int)>, List<(Int, Int)>>,
+    cond_<(Int, Int)>,
+    cond_<List<(Int, Int)>>,
+    nil<(Int, Int)>,
+    cons_<(Int, Int)>,
 
     _0, _1,
     equiv_, land_, lor_, not_,
@@ -16,6 +25,4 @@ let syms = (
 
     inc_, dec_, is_zero_, max_, min_,
 
-    nil<Int>,
-    cons_<Int>,
 );

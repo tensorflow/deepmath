@@ -114,7 +114,7 @@ macro bool equal_(const T& x, const T& y) { return x == y; }
 
 
 //=================================================================================================
-// -- Float types:
+// -- Float types: (equality is on representation, so '+0.0 != -0.0')
 
 
 template<> fts_macro uint64 hash_<float>(const float& x) {
@@ -126,6 +126,9 @@ template<> fts_macro uint64 hash_<double>(const double& x) {
     union { float f; uint64 u; } key;
     key.f = x;
     return key.u; }
+
+template<> fts_macro bool equal_(const float&  x, const float&  y) { return hash_<float> (x) == hash_<float> (y); }
+template<> fts_macro bool equal_(const double& x, const double& y) { return hash_<double>(x) == hash_<double>(y); }
 
 
 //=================================================================================================

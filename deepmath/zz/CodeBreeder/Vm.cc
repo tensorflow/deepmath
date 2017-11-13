@@ -143,6 +143,7 @@ Bin_Define(bit_or_  , "(Int, Int) -> Int") { ret[0].val = arg[0].val | arg[1].va
 Bin_Define(bit_xor_ , "(Int, Int) -> Int") { ret[0].val = arg[0].val ^ arg[1].val; }
 Bin_Define(abs_     , "Int -> Int") { ret[0].val = abs(arg[0].val); }
 Bin_Define(sign_    , "Int -> Int") { ret[0].val = (arg[0].val > 0) ? 1 : (arg[0].val < 0) ? -1 : 0; }
+Bin_Define(hmix_    , "(Int, Int) -> Int") { ret[0].val = shuffleHash(uint64(arg[0].val) ^ (uint64(arg[1].val) * 602923773562679ull)); }
 
 Bin_Define(f_neg_, "Float -> Float")          { ret[0].flt = -arg[0].flt; }
 Bin_Define(f_add_, "(Float, Float) -> Float") { ret[0].flt = arg[0].flt + arg[1].flt; }
@@ -1053,7 +1054,7 @@ addr_t Vm::run(addr_t start_addr, ResLims const& lim)
         if (icall.size() > excp_stack[LAST].lim.rec){
             uint64 lim = excp_stack[LAST].lim.rec;
             if (!throwExit(ExitData(a_rec_lim, Atom(), icall.size(), lim), ip)){
-                haltMsg(fmt("Exceeded recursion depth of %_.", excp_stack[LAST].lim.rec));
+                haltMsg(fmt("Exceeded recursion depth of %_.", lim));
                 result = RelPos(b_ZERO, 0);
                 goto Done; }
         }
@@ -1197,7 +1198,6 @@ addr_t RunTime::run(Expr prog, Params_RunTime P)
 RetVal RunTime::runRet(Expr prog, Params_RunTime P)
 {
     addr_t addr = run(prog, P);
-    /**/Dump(addr);
     return (addr == 0) ? RetVal(*this, addr, Type()) : RetVal(*this, addr, prog.type);
 }
 

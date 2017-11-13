@@ -21,10 +21,10 @@ limitations under the License.
 #include "TypeInference.hh"
 #include "Vm.hh"
 #include "Synth.hh"
-#include "PropSynth.hh"
 #include "RandomFuncs.hh"
 #include "HeapSynth.hh"
 #include "ExtractPropTests.hh"
+#include "CreateTestVectors.hh"
 
 using namespace ZZ;
 
@@ -118,9 +118,10 @@ void test()
         Inferrer infr;
         infr.inferTypes(prog);
 
-        RunTime rt;
-        RetVal val = rt.runRet(prog);
-        wrLn("RETVAL: %_", val);
+        wrLn("TYPE: %_", prog.type);
+        //RunTime rt;
+        //RetVal val = rt.runRet(prog);
+        //wrLn("RETVAL: %_", val);
 
     }catch (Excp_ParseError err){
         wrLn("PARSE ERROR! %_", err.msg);
@@ -133,16 +134,24 @@ int main(int argc, char** argv)
 {
     ZZ_Init;
 
+#if 0  // DEBUG
+    __uint128_t bignum = UINT64_MAX;
+    bignum *= bignum;
+    while (bignum != 0){
+        wr("%_ ", uint(bignum % 10));
+        bignum /= 10;
+    }
+    newLn();
+    return 0;
+#endif // END-DEBUG
     cli.add("input", "string", "", "Input .evo file", 0);
-    cli.add("env", "[string]", "", "Set environment variables.");
-    cli.add("ansi", "bool", "no", "Use ANSI codes in batch output.");
-    cli.add("profile", "bool", "no", "Display developer's profile information at the end.");
+    addStandardSwitches(cli);
     cli_hidden.add("i", "bool", "no", "Run in interactive mode [unfinished]");
 
     CLI cli_run;
     cli_run.add("catch", "bool", "yes", "Catch parse errors and report them (turn off if running inside GDB).");
     cli_run.add("cpu", "uint", "0", "CPU limit in steps. 0=no limit.");
-    cli_run.add("mem", "ufloat", "8", "Memory limit in MB.");
+    cli_run.add("mem", "ufloat", "64", "Memory limit in MB.");
     cli_run.add("rec", "uint", "0", "Maximum recursion depth. 0=no limit");
     cli_run.add("verbose", "bool", "yes", "Set to 'no' to only show program output.");
     cli_run.add("out", "string", "", "Send output to this file.");
@@ -150,12 +159,8 @@ int main(int argc, char** argv)
 
     CLI cli_synth;
     addParams_Synth(cli_synth);
-    cli.addCommand("synth", "Run Evo program.", &cli_synth);
-    cli.addCommand("heap-synth", "Run Evo program (new, experimental).");
-
-    CLI cli_prop_spec;
-    cli_prop_spec.add("...", "string", "", "List of EVO files");
-    cli.addCommand("prop-spec", "Create property specification file.", &cli_prop_spec);
+    cli.addCommand("synth", "Synthesize Evo program.", &cli_synth);
+    cli.addCommand("heap-synth", "Heap synthesis (unfinshed).");
 
     CLI cli_type_at;
     cli_type_at.add("line", "uint", arg_REQUIRED, "Line number (startin from 1)");
@@ -164,39 +169,42 @@ int main(int argc, char** argv)
 
     CLI cli_rand_fun;
     cli_rand_fun.add("n"          , "uint", "100", "Number of random functions to output.");
+    cli_rand_fun.add("timeout"    , "ufloat", "0", "Run for at most this many seconds (cpu time).");
+    cli_rand_fun.add("memout"     , "ufloat", "0", "Use at most this much memory (in MB).");
     cli_rand_fun.add("use-formals", "bool", "no", "If 'yes', all formal parameters to a function must be used.");
     cli_rand_fun.add("force-rec"  , "bool", "no", "If 'yes', synthesized function must contain a recursive call.");
     cli_rand_fun.add("ban-rec"    , "bool", "no", "If 'yes', synthesized function must NOT contain a recursive call.");
     cli_rand_fun.add("print-rec"  , "bool", "no", "If 'yes', only recursive functions are printed (but all functions are synthesized).");
     cli_rand_fun.add("must"       , "[string]", "[]", "List of symbols that must appear in output");
     cli_rand_fun.add("cant"       , "[string]", "[]", "List of symbols that can't appear in output");
-    cli_rand_fun.add("cpu", "uint", "25000000", "CPU limit in steps. 0=no limit.");
-    cli_rand_fun.add("mem", "ufloat", "8", "Memory limit in MB.");
-    cli_rand_fun.add("rec", "uint", "10000", "Maximum recursion depth. 0=no limit");
+    cli_rand_fun.add("cpu", "uint"  , "25000000", "Evo CPU limit in steps. 0=no limit.");
+    cli_rand_fun.add("mem", "ufloat", "64"      , "Evo memory limit in MB.");
+    cli_rand_fun.add("rec", "uint"  , "10000"   , "Evo maximum recursion depth. 0=no limit");
     cli_rand_fun.add("verb", "uint", "1", "Verbosity level.");
+    cli_rand_fun.add("save-pfx", "string", "", "If provided, training data will be saved to files with this prefix.");
+    cli_rand_fun.add("seen-in" , "string", "", "Read already seen hashes from this file.");
+    cli_rand_fun.add("seen-out", "string", "", "Write seen hashes to this file.");
     cli.addCommand("rand-fun", "Experimental code for generating random functions.", &cli_rand_fun);
 
     CLI cli_prop_tests;
     cli_prop_tests.add("output", "string", "", "Output file for property test patterns.");
-    cli.addCommand("prop-tests", "Collect property tests.", &cli_prop_tests);
+    cli.addCommand("prop-tests", "Collect property tests ('input' is interpreted as glob).", &cli_prop_tests);
 
     cli.addCommand("summarize-targets", "Count targets of each type in selected set of files.");
 
     cli.addCommand("test", "Placeholder for debugging.");
 
+    CLI cli_testvecs;
+    cli_testvecs.add("var", "string", "test_inputs", "Name of variable holding generated test patterns.");
+    cli_testvecs.add("n", "uint", "20", "Number of test-vectors to generate for each type.");
+    cli_testvecs.add("seed", "uint", "0", "Random seed to use.");
+    cli_testvecs.add("cat", "int", "-1", "Restrict test vector to this category");
+    cli_testvecs.add("types", "string", arg_REQUIRED, "File containint ';'-separated list of types.");
+    cli_testvecs.add("closed", "bool", "yes", "Should sub-types of given types be added automatically?");
+    cli.addCommand("testvecs", "Generate input test-vectors for a set of predefined types (see 'CreateTestVectors.cc').", &cli_testvecs);
+
     cli.parseCmdLine(argc, argv);
-
-    // Environment:
-    Vec<CLI_Val>* env = cli.get("env").sub;
-    if (env){
-        for (auto&& elem : *env){
-            putenv(elem.string_val.c_str());
-        }
-    }
-    suppress_profile_output = !cli.get("profile").bool_val;
-
-    if (cli.get("ansi").bool_val)
-        useAnsi(true);
+    processStandardSwitches(cli);
 
     // Run command:
     setupSignalHandlers();      // -- capture CTRL-C in a nicer way
@@ -237,12 +245,6 @@ int main(int argc, char** argv)
         SimpleSynth synth(spec);
         synth.run();
 
-    }else if (cli.cmd == "prop-spec"){
-        Vec<String> files= {in_filename};
-        for (auto&& arg : cli.tail)
-            files.push(arg.string_val);
-        createPropertySpecifications(files);
-
     }else if (cli.cmd == "type-at"){
         printTypeAt(in_filename, cli.get("line").int_val, cli.get("col").int_val);
 
@@ -252,11 +254,16 @@ int main(int argc, char** argv)
         P.P_enum.force_recursion  = cli.get("force-rec").bool_val;
         P.P_enum.ban_recursion    = cli.get("ban-rec").bool_val;
         P.n_funcs_to_generate     = cli.get("n").int_val;
+        P.timeout                 = cli.get("timeout").float_val;
+        P.memout                  = cli.get("memout").float_val * 1024 * 1024;
         P.print_only_recursive    = cli.get("print-rec").bool_val;
         P.lim.cpu = cli.get("cpu").int_val; if (P.lim.cpu == 0) P.lim.cpu = UINT64_MAX;
         P.lim.mem = cli.get("mem").float_val * 1024 * 1024 / sizeof(VM::Word);
         P.lim.rec = cli.get("rec").int_val; if (P.lim.rec == 0) P.lim.rec = UINT_MAX;
         P.verbosity = cli.get("verb").int_val;
+        P.training_data_pfx = cli.get("save-pfx").string_val;
+        P.seen_infile       = cli.get("seen-in").string_val;
+        P.seen_outfile      = cli.get("seen-out").string_val;
         for (CLI_Val v : cli.get("must")) P.must_haves.push(v.string_val);
         for (CLI_Val v : cli.get("cant")) P.cant_haves.push(v.string_val);
 
@@ -267,6 +274,15 @@ int main(int argc, char** argv)
 
     }else if (cli.cmd == "summarize-targets"){
         summarizeTargets(in_filename);
+
+    }else if (cli.cmd == "testvecs"){
+        String var_name   = cli.get("var").string_val;
+        uint   n_patterns = cli.get("n").int_val;
+        uint64 seed       = cli.get("seed").int_val;
+        uint   cat        = cli.get("cat").int_val;
+        String filename   = cli.get("types").string_val;
+        bool   closed     = cli.get("closed").bool_val;
+        genTestVectors(std_out, var_name, n_patterns, seed, cat, filename, closed);
 
     }else if (cli.cmd == "test"){
         test();

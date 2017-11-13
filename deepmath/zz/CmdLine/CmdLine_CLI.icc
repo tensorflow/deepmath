@@ -4,11 +4,11 @@
 //| Author(s)   : Niklas Een
 //| Module      : CmdLine
 //| Description : Implementation of CLI class.
-//| 
+//|
 //| (C) Copyright 2010-2014, The Regents of the University of California
 //|________________________________________________________________________________________________
 //|                                                                                  -- COMMENTS --
-//| 
+//|
 //|________________________________________________________________________________________________
 
 
@@ -121,7 +121,7 @@ void CLI::postProcess(CLI_PostProcessFun1 fun, void* data)
 }
 
 
-bool CLI::has(String arg_name)
+bool CLI::has(String arg_name) const
 {
     return getIfExist(arg_name);
 }
@@ -685,4 +685,34 @@ void CLI::parseCmdLine(int argc, char** argv, bool embed_cmd_cli)
             ShoutLn "Use '%_ -h' for command line help.", prog_name;
         exit(-1);
     }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Convenience functions:
+
+
+void addStandardSwitches(CLI& cli, cchar* which)
+{
+    if (strchr(which, 'e')) cli.add("env"    , "[string]", ""  , "Set environment variables.");
+    if (strchr(which, 'a')) cli.add("ansi"   , "bool | {default}", "default", "Use ANSI codes in batch output.");
+    if (strchr(which, 'p')) cli.add("profile", "bool | {default}", "default", "Display developer's profile information at the end.");
+}
+
+
+void processStandardSwitches(CLI const& cli)
+{
+    if (cli.has("env")){
+        Vec<CLI_Val>* env = cli.get("env").sub;
+        if (env){
+            for (auto&& elem : *env){
+                putenv(elem.string_val.c_str());
+            }
+        }
+    }
+    if (cli.has("profile") && cli.get("profile").choice == 0)
+        suppress_profile_output = !cli.get("profile").bool_val;
+
+    if (cli.has("ansi") && cli.get("ansi").choice == 0)
+        useAnsi(cli.get("ansi").bool_val);
 }

@@ -74,6 +74,7 @@ struct HeapSynth {
 
     virtual void expand(state_id s) = 0;
     virtual void eval  (state_id s) = 0;
+    virtual void start () {}        // -- called at start of 'run()'
     virtual void flush () {}        // -- called when queue is empty to give sub-class a chance to populate it before aborting search
 
     virtual void reportProgress(bool final_call) {}     // -- called periodically to allow for some user output; if 'report_freq == 0', not called at all

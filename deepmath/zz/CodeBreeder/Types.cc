@@ -140,6 +140,10 @@ Atom a_Internal;
 Atom a_A;
 Atom a_B;
 Atom a_T;
+Atom a_List;
+Atom a_Maybe;
+Atom a_Tree;
+Atom a_Hide;
 
 Vec<Atom> bit_primitive;
 Vec<Atom> bit_composite;
@@ -159,7 +163,10 @@ ZZ_Initializer(a_atoms, 0) {
     a_Internal = Atom("_Internal");
     a_A        = Atom("A");
     a_B        = Atom("B");
-    a_T        = Atom("T");
+    a_List     = Atom("List");
+    a_Maybe    = Atom("Maybe");
+    a_Tree     = Atom("Tree");
+    a_Hide     = Atom("Hide");
 
     bit_primitive += a_Void, a_Bool, a_Int, a_Float, a_Atom;
     bit_composite += a_Ref, a_OneOf, a_Fun, a_Tuple, a_Vec;

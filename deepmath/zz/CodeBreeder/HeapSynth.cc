@@ -42,7 +42,16 @@ void HeapSynth::enqueue(State const& S, Pool p, uind from)
 {
     state_id id = state.size();
     state.push(S);
+  #if 1
     cost.push(S.cost());
+  #else
+    // randomize a little
+    /**/static uint64 seed = 42;
+    double prio0 = (from == NO_PARENT) ? 0 : cost[from];
+    double cost0 = (from == NO_PARENT) ? 0 : state[from].cost();
+    double delta = S.cost() - cost0;
+    cost.push(prio0 + delta * drand(seed));
+  #endif
     pool.push(p);
     parent.push(from);
     Q.add(id);
@@ -61,6 +70,7 @@ void HeapSynth::getParents(state_id s, Vec<state_id>& out_parents)
 
 void HeapSynth::run()
 {
+    start();
     for(;;){
         if (Q.size() == 0) flush();
         if (Q.size() == 0) break;

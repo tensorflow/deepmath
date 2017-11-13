@@ -29,11 +29,13 @@ using namespace std;
 
 cchar* typevar_suffix = "_tvar";    // -- types ending in this represent type-variables in the list of symbols
 cchar* cost_tag = "cost_";          // -- symbols can be wrapped with 'cost_( <cost>, <symbol> )' to assign a non-unit cost
+cchar* synth_subst_tag = "synth_subst";
 
 
 Spec readSpec(String spec_file, bool spec_file_is_text, bool just_syms)
 {
     static Atom a_cost(cost_tag);
+    static Atom a_synth_subst(synth_subst_tag);
 
     // Parse specification file:
     Expr prog;
@@ -72,16 +74,30 @@ Spec readSpec(String spec_file, bool spec_file_is_text, bool just_syms)
     Spec spec;
     Expr syms;  // -- the symbol pool is different; we need the actual names (at least until we can reverse lookup addresses)
     Expr res;
+    Vec<Vec<Expr>> subst;
     if (defs.peek(Atom("syms"), syms)){
         while (syms[1].kind == expr_Sym){
             if (!defs.peek(syms[1].name, syms)) assert(false); }
 
         Vec<CExpr> pool_syms;
         for (Expr const& s : tupleSlice(syms[1])){
+            if (s.isUnit()) continue;
             if (s.kind == expr_Appl && s[0].kind == expr_Sym && s[0].name == a_cost){
                 assert(s[1].kind == expr_Tuple); assert(s[1].size() == 2);
                 if (s[1][0].kind != expr_Lit){ wrLn("ERROR! Costs must be float literals."); exit(1); }
                 pool_syms.push(CExpr(getFloat(s[1][0]), s[1][1]));
+            }else if (s.kind == expr_Appl && s[0].kind == expr_Sym && s[0].name == a_synth_subst){
+                assert(s[1].kind == expr_Tuple); assert(s[1].size() == 2);
+                Expr const& lhs = s[1][0];
+                subst.push();
+                subst[LAST].push(lhs);
+                for (auto&& rhs : tupleSlice(s[1][1])){
+                    if (lhs.type != rhs.type){
+                        wrLn("ERROR! Types must match in synthesis substitution specification (symbols '%_' and '%_')", lhs, rhs);
+                        exit(1); }
+                    subst[LAST].push(rhs);
+                }
+
             }else
                 pool_syms.push(CExpr(1.0, s));
         }
@@ -195,7 +211,9 @@ Spec readSpec(String spec_file, bool spec_file_is_text, bool just_syms)
   #endif
 
     RunTime rt;
-    addr_t ret = rt.run(spec.prog); assert(ret);
+    addr_t ret;
+    try{ ret = rt.run(spec.prog); assert(ret); }
+    catch(Excp_ParseError err) { wrLn("PARSE ERROR! %_", err.msg); exit(1); }
     spec.n_io_pairs = rt.data(ret).val;
 
     // Extract pruning rules, if any:

@@ -174,7 +174,10 @@ static Expr expand(Expr const& expr, SymTable<RDef>& defs, Emits& emits)
     }else if (expr.kind == expr_MetaErr){
         if (expr.name){
             Str msg(expr.name);
-            throw Excp_ParseError(fmt("%_: %_", expr.loc, msg.slice(1, msg.size()-1)));
+            if (expr.targs.psize() > 0)
+                throw Excp_ParseError(fmt("%_: `%_`. %_", expr.loc, expr.targs[0], msg.slice(1, msg.size()-1)));
+            else
+                throw Excp_ParseError(fmt("%_: %_", expr.loc, msg.slice(1, msg.size()-1)));
         }else
             throw Excp_ParseError(fmt("%_: Meta-if reached undefined branch.", expr.loc));
 

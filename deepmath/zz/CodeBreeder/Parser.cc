@@ -550,8 +550,9 @@ static Expr parseExpr_simple(Tokenizer& tok)
             if (tup.kind != expr_Tuple || tup.size() != 3){ throw Excp_ParseError(fmt("%_: Static-if '##if' expects three arguments.", loc)); }
             ret = Expr::MetaIf(move(tup[0]), move(tup[1]), move(tup[2]));
         }else if (tok.match("error")){
+            Type t = tok.match(":") ? parseType(tok) : Type();
             Atom msg = isStr(tok) ? Atom(tok.read()) : Atom();
-            ret = Expr::MetaErr(msg);
+            ret = Expr::MetaErr(msg, move(t));
         }else
             throw Excp_ParseError(fmt("%_: Invalid compile-time directive.", loc));
     }

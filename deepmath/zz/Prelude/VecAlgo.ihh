@@ -255,6 +255,15 @@ macro void operator+=(Vec<T>& vec, const Vec<S>& vec2) {
     append(vec, vec2); }
 
 
+template<class INT>
+macro Vec<INT> enumTo(INT hi) {
+    Vec<INT> v(reserve_, hi);
+    for (INT i = 0; i < hi; i++)
+        v.push(i);
+    return move(v);
+}
+
+
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Functional style (produces 'Vec<T>'s):
 
@@ -283,6 +292,15 @@ auto mapCond(ARR&& xs, FUN f, IF cond) -> Vec<FunRet>
             ret.push(f(xs[i]));
     return ret;
 }
+
+
+// Computes 'f(f(f(init, x0), x1), x2)...'. Return value is of same type as 'init'.
+template<class ARR, class T, class FUN>
+auto foldl(ARR&& xs, T init, FUN f) -> T {
+    for (auto&& x : xs)
+        init = f(init, x);
+    return init;
+};
 
 
 #undef FunRet

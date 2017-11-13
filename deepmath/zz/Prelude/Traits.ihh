@@ -102,12 +102,12 @@ struct Excp {};     // -- All exceptions within 'ZZ' derive from this class
 // Add constness:
 
 
-template<class T> struct Const {
+template<class T> struct EnsureConst {
     typedef const T Result;
 };
 
 template<class T>
-struct Const<const T> {     // -- if type already is 'const', do nothing (useful with templates)
+struct EnsureConst<const T> {     // -- if type already is 'const', do nothing (useful with templates)
     typedef const T Result;
 };
 

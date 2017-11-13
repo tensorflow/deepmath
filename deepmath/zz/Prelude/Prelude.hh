@@ -76,6 +76,7 @@ Defines that control compilation:
 #include <cmath>
 #include <csignal>
 #include <new>
+#include <memory>   // -- for 'shared_ptr'
 
 #if __cplusplus >= 201103L
   #include <functional>

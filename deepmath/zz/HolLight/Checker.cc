@@ -70,11 +70,11 @@ void checkProof(String filename, CheckMode mode, bool show_progress)
 
         if (mode == CheckMode::APPL || mode == CheckMode::FULL){
             // Rule application output:
-            if (ret_kind == arg_NULL) Write "`` %_(", rule_kind;
-            else                      Write "`` %_[%_] = %_(", ret_kind, retC[ret_kind], rule_kind;
+            if (ret_kind == arg_NULL) Write_ "`` %_(", rule_kind;
+            else                      Write_ "`` %_[%_] = %_(", ret_kind, retC[ret_kind], rule_kind;
             for (uint i = 0; i < args.size(); i++){
-                if (args[i].isAtomic()) Write " %_[\"%_\"]", makeNoIndex(args[i].kind), args[i].str();
-                else                    Write " %_[%_]"    , makeNoIndex(args[i].kind), args[i].id;
+                if (args[i].isAtomic()) Write_ " %_[\"%_\"]", makeNoIndex(args[i].kind), args[i].str();
+                else                    Write_ " %_[%_]"    , makeNoIndex(args[i].kind), args[i].id;
             }
             WriteLn " )";
         }

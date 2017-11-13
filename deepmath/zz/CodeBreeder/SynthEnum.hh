@@ -21,10 +21,6 @@ limitations under the License.
 #include "Types.hh"
 #include "SynthSpec.hh"
 
-// Forward declare protobuf.
-namespace CodeBreeder { struct NodeProto; }
-namespace CodeBreeder { struct StateProto; }
-
 namespace ZZ {
 using namespace std;
 
@@ -35,7 +31,7 @@ namespace ENUM {
 
 
 enum GExprKind : uchar {        // # = integer (represented as negative numbers), otherwise GExpr index
-    g_NULL,
+    g_NULL ,
     g_Pool ,    // pool_sym#
     g_PI   ,    // -
     g_Id   ,    // in
@@ -46,7 +42,7 @@ enum GExprKind : uchar {        // # = integer (represented as negative numbers)
     g_Obl  ,    // [in] (if input given, then adaptor)
     g_Scope,    // - (open scope: nodes with higher indices are inside scope)
     g_Begin,    // -
-    g_End,      // -
+    g_End  ,    // -
     GExprKind_size
 };
 
@@ -146,6 +142,9 @@ template<> fts_macro void write_(Out& out, ENUM::State const& v, Str flags)
 }
 template<> fts_macro void write_(Out& out, ENUM::State const& v) {
     write_(out, v, Str()); }
+
+
+void exportDot(Pool const& pool, ENUM::State const& S, String const& filename);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

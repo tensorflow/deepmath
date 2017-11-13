@@ -18,10 +18,6 @@ limitations under the License.
 
 #include "Types.hh"
 
-// Forward declare protobuf.
-namespace CodeBreeder { struct PoolProto; }
-namespace CodeBreeder { struct TrainingProto; }
-
 namespace ZZ {
 using namespace std;
 
@@ -98,6 +94,8 @@ struct Spec {
     Expr    init_state; // -- 'init_state_', optional.
 
     Arr<Expr> pruning;  // -- pruning rules, from let definition of 'pruning'
+
+    Arr<Arr<Expr>> synth_subst; // -- substitution rules for random function synthesis; the first element can be substituted for any of the non-first elements
 };
 
 

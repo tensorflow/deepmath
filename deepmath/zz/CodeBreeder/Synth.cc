@@ -13,31 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(GOOGLE_CODE)    // -- for protobuf support:
-  // Protobuf includes have to go before 'Prelude.hh'
-  #include /*no-mangling*/ "third_party/deepmath/zz/CodeBreeder/synth.proto.h"
-  #define USE_PROTOBUFS
-#else
-  #if 1     // -- change to zero to remove dependency on 'libprotobuf-dev'
-#include "synth.pb.h"
-    #define USE_PROTOBUFS
-  #else
-    namespace CodeBreeder {
-    struct NodeProto;
-    struct StateProto;
-    struct TypeProto;
-    struct SymbolProto;
-    struct PoolProto;
-    struct TrainingProto;
-    }
-  #endif
-#endif
-
 #include ZZ_Prelude_hh
 #include "Synth.hh"
 
 #include <memory>
-
 
 #include "zz/Generics/IdHeap.hh"
 #include "zz/Generics/PArr.hh"
@@ -48,9 +27,11 @@ limitations under the License.
 #include "SynthSpec.hh"
 #include "SynthEnum.hh"
 #include "SynthPrune.hh"
+#include "SynthHelpers.hh"
 #include "Parser.hh"
 #include "TypeInference.hh"
 #include "Vm.hh"
+#include "TrainingData.hh"
 
 
 namespace ZZ {
@@ -129,146 +110,6 @@ void setParams_Synth(const CLI& cli, Params_Synth& P)
 
     if (P.enumeration_mode) P.keep_going = true;
 }
-
-
-#if defined(USE_PROTOBUFS)
-//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
-// Protobuf support:
-
-
-void typeToProto(const Type& t, ::CodeBreeder::TypeProto* proto)
-{
-    proto->set_name(t.name.c_str());
-    for (uint i = 0; i < t.size(); i++)
-        typeToProto(t[i], proto->mutable_arg()->Add());
-}
-
-
-void GExpr::toProto(::CodeBreeder::NodeProto* proto) const
-{
-    proto->set_kind(GExprKind_name[kind]);
-    proto->set_internal(internal);
-    proto->set_cost(cost);
-    for (uint i = 0; i < ins.psize(); i++)
-        proto->add_input((int)ins[i]);
-    if (type())
-        typeToProto(type(), proto->mutable_type_proto());
-}
-
-
-void State::toProto(uint64 id, ::CodeBreeder::StateProto* proto) const
-{
-    proto->set_state_id(id);
-    for (uint i = 0; i < size(); ++i)
-        (*this)[i].toProto(proto->add_node());
-}
-
-
-void Pool::toProto(::CodeBreeder::PoolProto* proto) const
-{
-    for (uint i = 0; i < size(); i++){
-        CExpr s = (*this)[i];
-        proto->add_name(s->name.c_str());
-        typeToProto(s->type, proto->add_type_proto());
-        proto->add_qualified_name(fmt("%_", *s).c_str());
-    }
-}
-
-
-#else
-void GExpr::toProto(::CodeBreeder::NodeProto * proto) const { assert(false); }
-void State::toProto(::CodeBreeder::StateProto* proto) const { assert(false); }
-void Pool ::toProto(::CodeBreeder::PoolProto * proto) const { assert(false); }
-
-
-#endif
-//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
-// Helpers:
-
-
-void reportGenealogy(uind s, Vec<State> const& states, Vec<Pair<double,uint64>> const& state_costs, Vec<uind> const& parent, Pool const& pool)
-{
-    Vec<uind> hist;
-    while (s != UIND_MAX){
-        hist.push(s);
-        s = parent[s]; }
-    reverse(hist);
-
-    newLn();
-    wrLn("GENEALOGY:");
-    for (uind s : hist){
-        wrLn("  $%.2f %_", state_costs[s].fst, states[s].expr(pool));
-    }
-    newLn();
-}
-
-
-#if defined(USE_PROTOBUFS)
-static Str slice(std::string const& str) {
-    return slice(*str.begin(), *str.end()); }   // -- C++11 guarantees strings are contiguous
-
-
-void genTrainingData(uind s, Vec<State> const& states, Vec<uind> const& parent, Pool const& pool, /*out*/::CodeBreeder::TrainingProto& tr_proto)
-{
-    pool.toProto(tr_proto.mutable_pool_proto());
-
-    uint pos_count = 0;
-    uint neg_count = 0;
-    Vec<uind> avoid;
-
-    auto writeExamples = [&](uind s, bool positive) {
-        Vec<uind> hist;
-        while (s != UIND_MAX){
-            if (has(avoid, s)) break;
-            hist.push(s);
-            s = parent[s];
-        }
-        reverse(hist);
-
-        if (hist.size() > 1){
-            for (uind s : hist)
-                states[s].toProto(s, positive ? tr_proto.add_positive() : tr_proto.add_negative());
-            State().toProto(0, positive ? tr_proto.add_positive() : tr_proto.add_negative());   // -- separator (id 0 is unused)
-            if (positive) pos_count += hist.size();
-            else          neg_count += hist.size();
-        }
-        append(avoid, hist);
-    };
-
-    writeExamples(s, true);
-    uint64 seed = 0;
-    uint max_tries = 10000;
-    while (neg_count < pos_count * 9 && max_tries > 0){   // -- 10/90 ratio between positives and negatives
-        writeExamples(irand(seed, states.size()), false);
-        max_tries--; }
-}
-
-
-void outputTrainingData(String filename, uind s, Vec<State> const& states, Vec<uind> const& parent, Pool const& pool)
-{
-    ::CodeBreeder::TrainingProto tr_proto;
-    genTrainingData(s, states, parent, pool, tr_proto);
-    {
-        OutFile out(filename);
-        //wrLn(out, "%_", slice(tr_proto.DebugString()));
-        out += slice(tr_proto.SerializeAsString());
-    }
-    wrLn("Wrote: \a*%_\a*", filename);
-}
-
-
-::CodeBreeder::PoolProto getPool(String spec_file, String params, bool spec_file_is_text)
-{
-    Spec spec = readSpec(spec_file, spec_file_is_text, true);
-    Pool& pool = spec.pool;
-    ::CodeBreeder::PoolProto pool_proto;
-    pool.toProto(&pool_proto);
-    return pool_proto;
-}
-
-#else
-void outputTrainingData(String filename, uind, Vec<State> const&, Vec<uind> const&, Pool const&) { assert(false); }
-#endif
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -365,8 +206,8 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
         addr_t ret = rt.run(e_run, P_rt);
         if (ret == 0){
             ret_code = 1;
-            /**/wrLn("RUNTIME ERROR:\n%_", ppFmt(expr));
-            //**/wrLn("RUNTIME ERROR:\n%_", ppFmt(e_run));
+            //**/wrLn("RUNTIME ERROR:\n%_", ppFmt(expr));
+            /**/wrLn("RUNTIME ERROR:\n%_", ppFmt(e_run));       // <<== can get here if evaluating 'expr' runs out of default resources for the 'rt' object (this evaluation is not wrapped in a 'run()')
         }else{
             // Extract result vector and summarize it:
             addr_t vec_head = rt.data(ret).val;
@@ -382,7 +223,7 @@ static uint evalExpr_(Expr const& expr, RunTime& rt, Spec const& spec, ResLims c
         }
     }catch (Excp_ParseError err){
         /**/wrLn("COMPILE ERROR:\n%_", ppFmt(expr));
-        /**/Dump(err.msg);
+        //**/Dump(err.msg);
         ret_code = 2;
     }
     double T1 = cpuTime();
@@ -580,8 +421,8 @@ int64 Synth::run()
 
     // Write task information to screen:
     if (P.verbosity > 0){
-        if (spec.name != "") wrLn("\a*SPEC NAME:\a* %_", spec.name);
-        if (spec.descr != "") wrLn("\a*SPEC DESCR:\a* %_", spec.descr);
+        if (spec.name) wrLn("\a*SPEC NAME:\a* %_", spec.name);
+        if (spec.descr) wrLn("\a*SPEC DESCR:\a* %_", spec.descr);
         wrLn("\a*TARGET:\a* %_", spec.target);
         wrLn("\a*POOL:\a*"); for (uint i = 0; i < pool.size(); i++) wrLn("  $%>3%_:  @%_ = \a*%_\a*  \a/:%_\a/", pool.cost(i), i, pool.sym(i), pool.sym(i).type);
         wrLn("\a*CONS COSTS:\a*");
@@ -696,14 +537,14 @@ int64 Synth::run()
                         reportProgress(true);
                         if (!P.keep_going) wrLn("Found smallest solution!");
                         reportGenealogy(s, states, state_costs, parent, pool);
+                        //**/{ String name = fmt("state%_.dot", n_attempts); exportDot(pool, S, name); wrLn("Wrote: \a*%_\a*", name); }
                     }
                     wrLn("PRETTY-PRINTED: [%_]\t+\t+\n%_\t-\t-\n", spec.name, ppFmt(e));
                     if (P.gen_training != "")
                         outputTrainingData(P.gen_training, s, states, parent, pool);
                     if (sol_fun){
                         ::CodeBreeder::TrainingProto tr_proto;
-                        genTrainingData(s, states, parent, pool, tr_proto);
-                        tr_proto.set_evo_code(fmt("%_", e).c_str());
+                        genTrainingData(s, states, parent, pool).toProto(&tr_proto);
                         tr_proto.set_evo_output(result.c_str());
                         sol_fun(tr_proto);
                     }

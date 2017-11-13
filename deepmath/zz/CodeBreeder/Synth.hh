@@ -71,8 +71,6 @@ void setParams_Synth(const CLI& cli, Params_Synth& P);
 typedef function<std::vector<double>(::CodeBreeder::PoolProto const&, std::vector<::CodeBreeder::StateProto> const&)> CostFun;
 typedef function<void(::CodeBreeder::TrainingProto const&)> SolutionFun;  // -- called with the genealogy of the solution
 
-::CodeBreeder::PoolProto getPool(String spec_file, String params, bool spec_file_is_text = false);
-
 int64 synthesizeProgram(String spec_file, Params_Synth P = Params_Synth(), bool spec_file_is_text = false, CostFun cost_fun = CostFun(), SolutionFun sol_fun = SolutionFun());
 int64 pySynthesizeProgram(String prog_text, String params, CostFun cost_fun = CostFun(), SolutionFun sol_fun = SolutionFun());
   // -- returns the best score achieved (which for the standard score function is the number of

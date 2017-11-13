@@ -89,12 +89,21 @@ int64 synthesize_with_guidance(
   return score;
 }
 
+static ::CodeBreeder::PoolProto get_pool_helper(ZZ::String spec_file, ZZ::String params)
+{
+    ZZ::Spec spec = readSpec(spec_file, true, true);
+    ZZ::Pool& pool = spec.pool;
+    ::CodeBreeder::PoolProto pool_proto;
+    pool.toProto(&pool_proto);
+    return pool_proto;
+}
+
 ::CodeBreeder::PoolProto get_pool(const std::string& progtext,
                                   const std::string& params) {
   initialize();
   ZZ::String prog_text(progtext.c_str());
   ZZ::String parameters(params.c_str());
-  return ZZ::getPool(prog_text, parameters, true);
+  return get_pool_helper(prog_text, parameters);
 }
 
 struct EvoVm {

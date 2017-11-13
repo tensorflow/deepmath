@@ -20,6 +20,7 @@ limitations under the License.
 #include "zz/Generics/Atom.hh"
 #include "zz/Generics/Map.hh"
 #include <limits>
+#include "ProtoBuf.hh"
 
 namespace ZZ {
 using namespace std;
@@ -113,6 +114,11 @@ extern Atom a_Any;      // -- special type used for 'write_' in type-inference
 extern Atom a_Internal; // -- special type used to mark built-in symbols in expansion phase
 extern Atom a_A;        // }
 extern Atom a_B;        // }- type variables
+
+extern Atom a_List;     // -- standard types defined in 'std.evo'
+extern Atom a_Maybe;
+extern Atom a_Tree;
+extern Atom a_Hide;
 
 extern Vec<Atom> bit_primitive;     // -- nullary types from the list above
 extern Vec<Atom> bit_composite;     // -- the remaining types (parser will guarantee arity constraints are met; type name is outside syntactic scope of types)
@@ -264,7 +270,7 @@ struct Expr {
         // -- 'tdef' is stored in 'type'
 
     static Expr MetaIf(Expr&& cond, Expr&& tt, Expr&& ff) { return Expr(expr_MetaIf, Atom(), {move(cond), move(tt), move(ff)}); }
-    static Expr MetaErr(Atom msg = Atom())                { return Expr(expr_MetaErr, msg); }
+    static Expr MetaErr(Atom msg = Atom(), Type&& t = Type()) { return Expr(expr_MetaErr, msg, {}, Type(), t ? Arr<Type>{move(t)} : Arr<Type>{}); }
 
     bool untypedEqualTo(Expr const& e) const {
         return kind == e.kind

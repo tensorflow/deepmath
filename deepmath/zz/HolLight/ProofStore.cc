@@ -70,11 +70,11 @@ ProofStore::ProofStore(String filename, bool quiet)
                 n_human_thms++;
         }
         if (!quiet && line_no % 100000 == 0)
-            Write "\rReading proof-log:  %.1f %% done.  %,d named theorems.\f", progress, n_human_thms;
+            Write_ "\rReading proof-log:  %.1f %% done.  %,d named theorems.\f", progress, n_human_thms;
     };
 
     parseProofLog(filename, callback);
-    if (!quiet) Write "\rReading proof-log:  Complete!  %,d named theorems.\n", n_human_thms;
+    if (!quiet) Write_ "\rReading proof-log:  Complete!  %,d named theorems.\n", n_human_thms;
 
     // Finalize data:
     countFanouts();

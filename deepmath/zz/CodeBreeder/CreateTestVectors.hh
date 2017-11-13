@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ZZ__CodeBreeder__RandomFuncs_hh
-#define ZZ__CodeBreeder__RandomFuncs_hh
+#ifndef ZZ__CodeBreeder__CreateTestVectors_hh
+#define ZZ__CodeBreeder__CreateTestVectors_hh
 
-#include "SynthEnum.hh"
-#include "Vm.hh"
+#include "Types.hh"
 
 namespace ZZ {
 using namespace std;
@@ -26,28 +25,8 @@ using namespace std;
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
 
-struct Params_RandFun {
-    uint verbosity = 1;
-
-    uint             n_funcs_to_generate = 100;
-    double           timeout = 0.0;                 // -- if non-zero, stop after this many CPU seconds
-    uint64           memout = 0;                    // -- if non-zero, stop if memory usage exceeds this
-    bool             print_only_recursive = false;
-    Params_SynthEnum P_enum;
-    ResLims          lim;
-
-    Vec<String> must_haves;
-    Vec<String> cant_haves;
-
-    String training_data_pfx;       // -- save training data to files prefixed with this string
-    String seen_infile;             // }
-    String seen_outfile;            // }- can be the same file.
-
-    // <<== rand-op substitutions
-};
-
-
-void generateRandomFunctions(String spec_filename, Params_RandFun const& P);
+void genTestVectors(Out& out, String var_name, uint n_patterns, uint64 seed, uint cat, Vec<Type> const& types, bool closed_set);
+void genTestVectors(Out& out, String var_name, uint n_patterns, uint64 seed, uint cat, String types_filename, bool closed_set);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

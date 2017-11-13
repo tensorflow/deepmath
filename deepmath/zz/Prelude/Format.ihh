@@ -433,7 +433,8 @@ macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0
 #define QShoutLn std_err |=
 #define QNewLine std_out += NL
 
-#define Write   std_out *=          // -- atomic version (for threaded programs)
+//#define Write   std_out *=         // (nameclash with protobuf)
+#define Write_   std_out *=          // -- atomic version (for threaded programs)
 #define WriteLn std_out -=
 #define Shout   std_err *=
 #define ShoutLn std_err -=
@@ -448,7 +449,7 @@ macro Formater<0,0,0> operator, (Out& out, Pre_Formater P) { return Formater<0,0
 #define FFWriteLn(out) out |=
 #define FFNewLine(out) out += NL
 
-#if defined(__GNUC__) || defined(sun)
+#if (defined(__GNUC__) || defined(sun)) && !defined(GOOGLE_CODE)
     #define Dump(args...) std_out |= formatDumpArgs(__FILE__, __LINE__, #args).c_str(), args
     #define EDump(args...) std_err |= formatDumpArgs(__FILE__, __LINE__, #args).c_str(), args
     String formatDumpArgs(cchar* file, int line, cchar* text);
@@ -521,8 +522,8 @@ fts_macro void write_(Out& out, const Fmt_Zip2<V1,V2>& v)
 
 struct ScopedWriteIndent {
     cchar* end_marker;
-    ScopedWriteIndent(cchar* start_marker, cchar* end_marker) : end_marker(end_marker) { Write "\t+\t+%_", start_marker; }
-   ~ScopedWriteIndent() { Write "\t-\t-%_", end_marker; }
+    ScopedWriteIndent(cchar* start_marker, cchar* end_marker) : end_marker(end_marker) { Write_ "\t+\t+%_", start_marker; }
+   ~ScopedWriteIndent() { Write_ "\t-\t-%_", end_marker; }
 };
 
 

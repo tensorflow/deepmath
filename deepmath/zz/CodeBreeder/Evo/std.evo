@@ -90,6 +90,9 @@ data Maybe<T> = {(), T};
 rec none<T>  : Maybe<T>      = Maybe<T>.0 ();
 rec some_<T> : T -> Maybe<T> = Maybe<T>.1;
 
+data Tree<A> = {(), (A, Tree<A>, Tree<A>)};
+rec stump<A> : Tree<A> = Tree<A>.0();
+rec tree_<A> : (A, Tree<A>, Tree<A>) -> Tree<A> = Tree<A>.1;
 
 data Hide<A> = {A};
 fun hide_<A>(vis :A) ->Hide<A> { Hide<A>.0 vis };
@@ -117,6 +120,10 @@ data Break = {()};  // -- depricated; use 'block{ ... break <value>; };'
 fun throw_break_() -> Void { throw_<(), Break>(Break.0()) };
 
 data For_All_ = {()};  // -- just a tag; should introduce Lisp-style blocks. (done now, should rewrite code that uses this)
+
+data DivisionByZero = {()}; // -- kept for compatibility
+
+fun fail_<A>() -> A { fail<A>; };
 
 
 //=================================================================================================
@@ -181,6 +188,12 @@ fun list_for_all_<A>(list :List<A>, pred_ :A->Bool) -> Bool {
     );
 };
 
+fun list_for_all_pairs_<A,B>(list0 :List<A>, list1 :List<B>, pred_ :(A,B)->Bool) -> Bool {
+    case_(list0, `_1, \(x, xs){
+        case_(list1, `_1, \(y, ys){
+            land_(pred_(x, y), `list_for_all_pairs_(xs, ys, pred_)) }) });
+};
+
 
 fun list_apply_all_<A>(iter :List<A>, f_ :A->()) {
     case_(iter, \{}, \(x, xs){
@@ -207,6 +220,36 @@ fun in_list_<A>(x :A, xs :List<A>) -> Bool {
     case_(xs, `_0, \(y, ys){
         cond_(x == y, `_1, `in_list_(x, ys))});
 };
+
+fun cons_last_<A>(a :A, list :List<A>) -> List<A> {
+    case_(list, `cons_(a, list), \(x, xs){
+        cons_(x, cons_last_(a, xs)) });
+};
+
+fun list_rotate_<A>(list :List<A>) -> List<A> {
+    case_(list, `list, cons_last_<A>);
+};
+
+fun list_double_<A>(list :List<A>) -> List<A> {
+    list_concat_(list, list);
+};
+
+fun to_range_(n : Int) -> List<Int> {
+    cond_<List<Int>>(gt_(n, 0), \{
+        let m = sub_(n, 1);
+        cons_<Int>(m, to_range_(m));
+    },\{
+        nil<Int>;
+    });
+};
+
+fun decons_<A>(list :List<A>) -> (A, List<A>) { case_(list, `fail<(A, List<A>)>, \ret{ ret }); };
+fun head_<A>(list :List<A>) -> A       { #0(decons_ list) };
+fun tail_<A>(list :List<A>) -> List<A> { #1(decons_ list) };
+
+fun safe_decons_<A>(list :List<A>) -> (A, List<A>) { case_(list, `(default<A>, default<List<A>>), \ret{ ret }); };
+fun safe_head_<A>(list :List<A>) -> A              { #0(safe_decons_ list) };
+fun safe_tail_<A>(list :List<A>) -> List<A>        { #1(safe_decons_ list) };
 
 
 //=================================================================================================
@@ -414,7 +457,8 @@ fun equal_<A>(x :A, y :A) -> Bool {
     ##if (match<A, [B]>, vec_equal_(x, y),
     ##if (match<A, List<B>>, list_equal_(x, y),
     ##if (match<A, Maybe<B>>, maybe_equal_(x, y),
-        ##error "Equality not defined for type")))))))));
+    ##if (match<A, Tree<B>>, tree_equal_(x, y),
+        ##error "Equality not defined for type"))))))))));
 };
 
 fun maybe_equal_<T>(x :Maybe<T>,  y :Maybe<T>) -> Bool {
@@ -440,6 +484,15 @@ fun list_equal_<A>(xxs :List<A>, yys :List<A>) -> Bool {
     case_(xxs, `list_empty_ yys, \(x, xs){
         case_(yys, `_0, \(y, ys){
             equal_(x, y) && `list_equal_(xs, ys); }); });
+};
+
+fun tree_equal_<A>(s :Tree<A>, t :Tree<A>) -> Bool {
+    case_(s, \{
+        case_(t, `_1, \_{_0});
+    },\(val, left, right){
+        case_(t, `_0, \(val2, left2, right2){
+            val == val2 && `left == left2 && `right == right2 });
+    });
 };
 
 fun not_equal_<A>(x :A, y :A) -> Bool { not_(equal_(x, y)) };
@@ -488,7 +541,8 @@ fun lex_lt_<A>(x :A, y :A) -> Bool {
     ##if (match<A, (A1,A2,A3)>, lex_lt_(#0 x,  #0 y) || `(equal_(#0 x,  #0 y) && (`lex_lt_(#1 x,  #1 y) || `(equal_(#1 x, #1 y) && `lex_lt_(#2 x, #2 y)))),
     ##if (match<A, [B]>, vec_lt_(x, y),
     ##if (match<A, List<B>>, list_lt_(x, y),
-        ##error "Equality not defined for type"))))))));
+    ##if (match<A, Maybe<B>>, case_(x, `case_(y, `_0, \_{_1}), \xv{ case_(y, `_0, \yv{ lex_lt_(xv, yv) }) }),
+        ##error "Equality not defined for type")))))))));
 };
 
 fun lex_le_<A>(x :A, y :A) -> Bool { !(y *< x) };
@@ -497,23 +551,6 @@ fun lex_le_<A>(x :A, y :A) -> Bool { !(y *< x) };
 //=================================================================================================
 // Hashing:
 
-
-/*
-fun equal_<A>(x :A, y :A) -> Bool {
-    ##if (match<A, Int>, eq_(x, y),
-    ##if (match<A, Atom>, a_eq_(x, y),
-    ##if (match<A, Float>, f_eq_(x, y),
-    ##if (match<A, Bool>, equiv_(x, y),
-    ##if (match<A, (A1,A2)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y),
-    ##if (match<A, (A1,A2,A3)>, equal_(#0 x,  #0 y) && `equal_(#1 x,  #1 y) && `equal_(#2 x,  #2 y),
-    ##if (match<A, [B]>, vec_equal_(x, y),
-    ##if (match<A, List<B>>, list_equal_(x, y),
-    ##if (match<A, Maybe<B>>, maybe_equal_(x, y),
-        ##error "Equality not defined for type")))))))));
-};
-*/
-
-fun hmix_(x :Int, y :Int) -> Int { x %^ (1177585495240697 * y) };
 
 fun hash_<A>(x :A) -> Int {
     ##if (match<A, Int>, x,
@@ -561,6 +598,16 @@ fun inc_(n :Int) -> Int { add_(n, 1); };
 fun dec_(n :Int) -> Int { sub_(n, 1); };
 fun is_zero_(n :Int) -> Bool { eq_(n, 0); };
 fun is_nonzero_(n :Int) -> Bool { ne_(n, 0); };
+fun is_even_(n :Int) -> Bool { n %& 1 == 0; };
+fun is_pow2_(n :Int) -> Bool { n %& (n - 1) == 0; };    // -- 0 morally is 2^32, so true
+fun is_positive_(n : Int) -> Bool { gt_(n, 0); };
+fun is_nonnegative_(n : Int) -> Bool { ge_(n, 0); };
+fun is_negative_(n : Int) -> Bool { lt_(n, 0); };
+fun is_nonpositive_(n : Int) -> Bool { le_(n, 0); };
+
+
+fun dbl_(x :Int) -> Int { add_(x, x); };
+fun sq_(x :Int) -> Int { mul_(x, x); };
 
 fun ignore_<A, B>(_ :A, b :B) -> B { b };   // -- ignore first argument, return second
 fun starter_<A>(val :A, f_ :(A, A)->A) -> A { f_(val, default<A>) };    // -- higher-order function to enable accumulating paramter solutions.
@@ -569,6 +616,28 @@ fun starter_<A>(val :A, f_ :(A, A)->A) -> A { f_(val, default<A>) };    // -- hi
 fun curried_lt_(n :Int) -> (Int->Bool) {
     fun f_(m :Int) -> Bool { lt_(n, m) };
     f_;
+};
+
+
+fun rand_unop_(x :Int) -> Int {
+    let ret = 3*x + 13;
+    cond_(abs_(ret) < 100000000, `ret, `fail<Int>);
+};
+
+fun rand_binop_(x :Int, y :Int) -> Int {
+    let ret = 3*x + 7*y + 13;
+    cond_(abs_(ret) < 100000000, `ret, `fail<Int>);
+};
+
+fun safe_div_(n :Int, m :Int) -> Int {
+    if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
+    div_(n, m);
+};
+
+
+fun safe_mod_(n :Int, m :Int) -> Int {
+    if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
+    cond_<Int>(is_negative_(n), `mod_(neg_(n),m), `mod_(n,m));
 };
 
 

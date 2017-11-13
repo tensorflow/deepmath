@@ -427,6 +427,11 @@ void write_uint(Out& out, uint64 num, Str flags, bool neg)
             out += fill;
         break;}
 
+    case 'r':
+        for (uint i = 0; i < num; i++)
+            out += flags.slice(0, flags.size()-1);
+        break;
+
     default:
         // Output something useful on stderr before aborting:
         char* msg = xmalloc<char>(flags.size() + 1);

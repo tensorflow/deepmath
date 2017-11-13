@@ -146,6 +146,23 @@ fun get_test_vec_<IN,OUT>(io_pairs :[(IN, OUT)], rlim :RLim) -> (IN->OUT) -> [Ma
 };
 
 
+// Wrap 'f_' in a resource limited 'run_' command and return a Maybe value.
+fun maybefy_<A,B>(f_ :A->B, rlim :(Int,Int,Int)) -> A->Maybe<B> {
+    fun g_(in :A) -> Maybe<B> {
+        try_<Maybe<B>, Excp_Exit>(\{
+            try_<Maybe<B>, ()>(\{
+                some_(run_(`f_ in, #0 rlim, #1 rlim, #2 rlim));
+            },\{
+                none<B>;
+            })
+        },\_{
+            none<B>;
+        });
+    };
+    g_;
+};
+
+
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Coverage analysis:
 
@@ -178,12 +195,18 @@ fun appl<A,B,C>(_ :A->B, _ :C) {};
 fun wild(_ :Atom) {};
 fun unordered() {};
 
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Synthesis substitutions:
+
+
+fun synth_subst<A,B>(_ :A, _ :B){};
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Symbol sets:
 
 
-let syms_basic_ = (
+let syms_basic = (
     case_<List<Int>, Bool>,
     case_<List<Int>, Int>,
     case_<List<Int>, List<Int>>,

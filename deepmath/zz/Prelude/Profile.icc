@@ -81,7 +81,7 @@ void dumpProfileData()
           #endif
 
             NewLine;
-            Write "\a/";
+            Write_ "\a/";
             WriteLn "_______________________________________________________________________________";
             WriteLn "                                                           Profile Timer Report";
             WriteLn "Estimated CPU speed: \a*%.2f GHz\a*", (rdtsc_T1 - rdtsc_T0) / (real_T1 - real_T0) / 1000000000;
@@ -103,8 +103,8 @@ void dumpProfileData()
                 PTimer* t = &data[i];
           #endif
                 if (t->acc_time == 0) continue;
-                Write "%_: ", t->timer_name;
-                for (uint i = (uint)strlen(t->timer_name); i < max_len; i++) Write " ";
+                Write_ "%_: ", t->timer_name;
+                for (uint i = (uint)strlen(t->timer_name); i < max_len; i++) Write_ " ";
                 WriteLn "\a*%>9%.2f s\a*  (%.2f %%)", t->acc_time * to_sec, t->acc_time * to_percent;
             }
 

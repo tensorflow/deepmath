@@ -131,7 +131,7 @@ Expr State::expr(Pool const& P, bool obl_as_fail, uint* n_cov_points) const
     ZZ_PTimer_Scope(synth_enum_State_expr);
 
     static Atom a_obl("?");
-    static Atom a_adapt("?<");
+    static Atom a_adapt("??");
     static Atom a_coverage("\"coverage\"");
     static Atom a_x("x");
 
@@ -265,7 +265,7 @@ int State::order_(uint i, uint j, uint& count) const
 
     for (uint n = 0; n < g.ins.psize(); n++){
         if ((int)g.ins[n] < 0){
-            assert(h.ins[n] < 0);
+            assert((int)h.ins[n] < 0);
             if (g.ins[n] > h.ins[n]) return -1;     // -- intentionally '>' because negative encoding
             if (g.ins[n] < h.ins[n]) return +1;
         }else{
@@ -410,7 +410,7 @@ bool usesToplevelFormals(State const& S)
             if (g.kind == g_Id && g.ins[0] == pi) goto Found;
             if (g.kind == g_Appl && (g.ins[0] == pi || g.ins[1] == pi)) goto Found;
             if (g.kind == g_Tuple && i != i_form){
-                for (uint j : g.ins)
+                for (uint j : +g.ins)
                     if (j == pi) goto Found;
             }
         }
@@ -423,6 +423,7 @@ bool usesToplevelFormals(State const& S)
 
 //=================================================================================================
 // -- expand one obligation:
+
 
 static bool inFanin(uint tgt, State const& S, uint n, IntSeen<uint>& seen) {
   if (n == tgt) return true;
@@ -537,6 +538,110 @@ void expandOne(Pool const& pool, State S, uint tgt_i, function<void(State)> enqu
             enqueue(S.set(tgt_i, GExpr(g_Tuple, obls, f.type(), pool.costTuple())));
         }
     }
+}
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Export as DOT:
+
+
+static Map<Atom,Atom> type_abbrev;
+ZZ_Initializer(type_abbrev, 0) {
+    type_abbrev.set(Atom("Void" ), Atom("V"));
+    type_abbrev.set(Atom("Bool" ), Atom("B"));
+    type_abbrev.set(Atom("Int"  ), Atom("I"));
+    type_abbrev.set(Atom("Float"), Atom("F"));
+    type_abbrev.set(Atom("Atom" ), Atom("A"));
+    type_abbrev.set(Atom("List" ), Atom("L"));
+    type_abbrev.set(Atom("Maybe"), Atom("M"));
+}
+
+
+static
+Type abbrevTypes(Type type)
+{
+    Atom res;
+    if (type_abbrev.peek(type.name, res))
+        type.name = res;
+    if (type.size() > 0)
+        type.args = map(type, abbrevTypes);
+    return type;
+}
+
+static
+Expr abbrevTypes(Expr const& expr)
+{
+    Arr<Expr> es; if (expr.exprs) es = map(expr.exprs, [&](Expr const& e){ return abbrevTypes(e); });
+    Arr<Type> ts; if (expr.targs) ts = map(expr.targs, [&](Type const& t){ return abbrevTypes(t); });
+    return Expr(expr.kind, expr.name, move(es), abbrevTypes(expr.type), move(ts), expr.loc);
+}
+
+
+static
+void exportDot(Pool const& pool, State const& S, uint idx, Out& out, IntSeen<uint>& seen, IntSeen<uint>& parents, uint n_scopes)
+{
+    if (seen.has(idx)) return;
+
+    seen.add(idx),
+    parents.add(idx);
+
+    // Print this node:
+    static Vec<cchar*> appl_args{"fun", "arg"};
+    static Vec<cchar*> lamb_args{"head", "body"};
+    static const Array<cchar*> enum_args(empty_);
+
+    GExpr const& ge = S[idx];
+
+    String        node_qualifier;
+    Array<cchar*> arg_names;    // -- if unset, no edge labels; if set to 'enum_args', "0, 1, 2..."; else index into given array.
+    String        fill_color = "#FFFFFF";
+    switch (ge.kind){
+    case g_Pool : wr(node_qualifier, "[%_]", abbrevTypes(pool.sym(~ge.ins[0]))); break;
+    case g_PI   : break;
+    case g_Id   : break;
+    case g_Appl : arg_names = appl_args.slice(); break;
+    case g_Tuple: arg_names = enum_args; break;
+    case g_Sel  : wr(node_qualifier, "[%_]", ~ge.ins[0]); break;
+    case g_Lamb : arg_names = lamb_args.slice(); fill_color = "#FFEEBB"; break;
+    case g_Obl  : break;
+    default: wrLn("INTERNAL ERROR! Unexpeced GExpr kind in 'exportDot()': %_", GExprKind_name[ge.kind]), assert(false); }
+
+    wrLn(out, "n%_ [shape=box style=filled fillcolor=\"%_\" label=\"%.r n%_ %C%_%_\\n%_\"]", idx, fill_color, n_scopes, idx, ge.internal?'*':0, GExprKind_name[ge.kind], node_qualifier, abbrevTypes(ge.type()));
+
+    for (uint i = 0; i < ge.ins.psize(); i++){
+        if ((int)ge.ins[i] >= 0){
+            if (parents.has(ge.ins[i])){
+                wrLn(out, "r%__%_ [label=\"n%_\" shape=plaintext]", idx, ge.ins[i], ge.ins[i]);
+                wr(out, "n%_->r%__%_ [style=dotted]", idx, idx, ge.ins[i]);
+            }else
+                wr(out, "n%_->n%_", idx, ge.ins[i]);
+            if (arg_names){
+                if (arg_names == enum_args) wr(out, " [label=\"%_\" fontcolor=\"#0000FF\"]", i);
+                else                        wr(out, " [label=\"%_\" fontcolor=\"#0000FF\"]", arg_names[i]);
+            }
+            out += "\n";
+        }
+    }
+
+    // Recurse:
+    for (uint child : +ge.ins)
+        if ((int)child >= 0)
+            exportDot(pool, S, child, out, seen, parents, n_scopes + (ge.kind == g_Lamb));
+
+    parents.exclude(idx);
+}
+
+
+void exportDot(Pool const& pool, State const& S, String const& filename)
+{
+    OutFile out(filename);
+    if (!out){ wrLn("ERROR! Could not open file for writing: %_", filename); exit(1); }
+
+    wrLn(out, "digraph \"State\" {");
+    IntSeen<uint> seen;
+    IntSeen<uint> parents;
+    exportDot(pool, S, 0, out, seen, parents, 0);
+    wrLn(out, "}");
 }
 
 

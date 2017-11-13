@@ -219,7 +219,7 @@ struct CLI {
         // -- Callbacks are applied after command line has been parsed. On success, the
         // call-backs should return an empty string, otherwise an error message.
 
-    bool     has(String arg_name);
+    bool     has(String arg_name) const;
         // -- does this CLI contain a declaration of 'arg_name' (not necessarily assigned a value)
 
     void     embed(CLI& cli, String prefix);
@@ -267,6 +267,14 @@ template<> fts_macro void write_(Out& out, const CLI_Val& val) { write_CLI_Val(o
 
 extern CLI cli;             // -- Use this CLI in 'main()'.
 extern CLI cli_hidden;      // -- Automatically embedded in 'cli' but hidden from documentation.
+
+
+//mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+// Convenience functions:
+
+
+void addStandardSwitches(CLI& cli, cchar* which ="eap");    // -- 'e'='-env', 'a'='-ansi', 'p'='-profile'
+void processStandardSwitches(CLI const& cli);
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm

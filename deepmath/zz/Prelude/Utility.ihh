@@ -288,7 +288,7 @@ macro String setExtension(String filename, String new_ext) {    // -- specify wi
 // separator (so "hello,,world" split on comma will return two elements, not three). Leading and
 // trailing separators are ignored (",hello,,world,,," still returns two elements).
 template<class T>
-void splitArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+void splitArray(Array<T> text, Array< typename EnsureConst<T>::Result > seps, Vec<Array<T> >& out)
 {
     out.clear();
     if (text.null()) return;
@@ -355,7 +355,7 @@ void splitArray(Array<T> text, char sep, Vec<Array<T> >& out)
 // comma will return *three* element, the second one a zero-length string). NOTE! An empty input
 // 'text' will return an 'out' vector with one element (a zero-length array).
 template<class T>
-void strictSplitArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+void strictSplitArray(Array<T> text, Array< typename EnsureConst<T>::Result > seps, Vec<Array<T> >& out)
 {
     out.clear();
     if (text.null()) return;
@@ -381,7 +381,7 @@ macro void strictSplitArray(Str text, cchar* seps, Vec<Str>& out) {
 
 // Tokenize 'text' into length-one strings from 'seps' and non-zero length strings in between.
 template<class T>
-void tokenizeArray(Array<T> text, Array< typename Const<T>::Result > seps, Vec<Array<T> >& out)
+void tokenizeArray(Array<T> text, Array< typename EnsureConst<T>::Result > seps, Vec<Array<T> >& out)
 {
     out.clear();
     if (text.null()) return;
@@ -603,11 +603,19 @@ macro void putu(Out& out, uint64 num) { putUInt(out, num); }
 macro void puti(Out& out, uint64 num) { putInt(out, num); }
 macro void putc(Out& out, char c)     { out.push(c); }
 macro void putb(Out& out, uchar c)    { out.push((char)c); }  // - 'b' for byte
+macro void putu32 (Out& out, uint   num) { for (uint i = 0; i < 4; i++)  out.push((char)(num >> (8*i))); }
+macro void putu32b(Out& out, uint   num) { for (uint i = 4; i > 0;) i--, out.push((char)(num >> (8*i))); }    // -- big-endian version
+macro void putu64 (Out& out, uint64 num) { for (uint i = 0; i < 8; i++)  out.push((char)(num >> (8*i))); }
+macro void putu64b(Out& out, uint64 num) { for (uint i = 8; i > 0;) i--, out.push((char)(num >> (8*i))); }    // -- big-endian version
 
 macro uint64 getu(In& in) { return getUInt(in); }
 macro uint64 geti(In& in) { return getInt(in); }
 macro char   getc(In& in) { return in.scan(); }
 macro uchar  getb(In& in) { return (uchar)in.scan(); }
+macro uint   getu32 (In& in) { uint   ret = 0; for (uint i = 0; i < 4; i++)  ret |= ((uint)  (uchar)in.scan()) << (8*i); return ret; }
+macro uint   getu32b(In& in) { uint   ret = 0; for (uint i = 4; i > 0;) i--, ret |= ((uint)  (uchar)in.scan()) << (8*i); return ret; }    // -- big-endian version
+macro uint64 getu64 (In& in) { uint64 ret = 0; for (uint i = 0; i < 8; i++)  ret |= ((uint64)(uchar)in.scan()) << (8*i); return ret; }
+macro uint64 getu64b(In& in) { uint64 ret = 0; for (uint i = 8; i > 0;) i--, ret |= ((uint64)(uchar)in.scan()) << (8*i); return ret; }    // -- big-endian version
 
 // Put string using zero-terminatation:
 macro void putz(Out& out, cchar* s) { while (*s != 0) out.push(*s++); out.push(0); }

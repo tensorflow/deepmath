@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "SynthEnum.hh"
 #include "SynthPrune.hh"
+#include "SynthHelpers.hh"
 #include "DeriveGenealogy.hh"
 #include "HeapSynth.hh"
 #include "Vm.hh"
@@ -79,23 +80,23 @@ class RandomFuncs : public HeapSynth {
     uint lookupPoolSym(String const& sym_text);
 
     // Statistics:
+    double T0;
     uint64 n_enqueues = 0;
     uint64 n_prunes   = 0;
     uint64 n_runs     = 0;
     uint64 n_unqiue   = 0;
+    double last_cost  = 0.0;
 
 public:
     // <<== should take Params_HeapSynth (or subset of them)
     RandomFuncs(Spec const& spec, Params_RandFun const& P);
 
+    void start() override { T0 = cpuTime(); }
     void expand(state_id s) override;
     void eval  (state_id s) override;
     void reportProgress(bool final_call) override;
+    void flush() override;
 };
-
-
-//=================================================================================================
-// TEMPORARY; MOVE THIS:
 
 
 //=================================================================================================
@@ -103,8 +104,8 @@ public:
 
 void RandomFuncs::reportProgress(bool final_call)
 {
-    wr("\r>> \a/\a*#enq:\a* %_   \a*#prune:\a* %_   \a*#run:\a* %_   \a*#unique:\a* %_   \a*#found:\a* %_   [%t]\a/\f%c",
-        n_enqueues, n_prunes, n_runs, n_unqiue, found.size(), cpuTime(), final_call?'\n':'\r');
+    wr("\r>> \a/\a*#enq:\a* %_   \a*#prune:\a* %_   \a*#run:\a* %_   \a*#unique:\a* %_   \a*#found:\a* %_   \a*cost@eval:\a* %_   [%t, %DB]\a/\f%c",
+        n_enqueues, n_prunes, n_runs, n_unqiue, found.size(), last_cost, cpuTime(), memUsed(), final_call?'\n':'\r');
 }
 
 
@@ -115,7 +116,7 @@ RandomFuncs::RandomFuncs(Spec const& spec, Params_RandFun const& P) :
 {
     if (spec.init_state){
         assert(spec.init_state.kind == expr_LetDef || spec.init_state.kind == expr_RecDef);
-        Vec<State> hist = deriveGenealogy(spec.init_state, spec.pool);
+        Vec<State> hist = deriveGenealogy(spec.init_state[1], spec.pool);
 
         if (P.verbosity >= 1){
             wrLn("INIT STATE GENEALOGY:");
@@ -132,6 +133,27 @@ RandomFuncs::RandomFuncs(Spec const& spec, Params_RandFun const& P) :
     pruner.init(spec.pruning, spec.pool, P.verbosity >= 1);
     must_haves = map(P.must_haves, [&](String const& s){ return lookupPoolSym(s); });
     cant_haves = map(P.cant_haves, [&](String const& s){ return lookupPoolSym(s); });
+
+    if (P.seen_infile != ""){
+        InFile in(P.seen_infile);
+        if (!in){ wrLn("ERROR! Could not open: %_", P.seen_infile); exit(1); }
+        for (uind n = getu64(in); n != 0; n--)
+            seen.add(getu64(in));
+        wrLn("Read: \a*%_\a*", P.seen_infile);
+    }
+}
+
+
+void RandomFuncs::flush()
+{
+    if (P.seen_outfile != ""){
+        OutFile out(P.seen_outfile);
+        if (!out){ wrLn("ERROR! Could not open: %_", P.seen_outfile); exit(1); }
+        putu64(out, seen.size());
+        For_Set(seen)
+            putu64(out, Set_Key(seen));
+        wrLn("Wrote: \a*%_\a*", P.seen_outfile);
+    }
 }
 
 
@@ -175,8 +197,45 @@ void RandomFuncs::expand(state_id s)
 }
 
 
+#if 0
+static
+bool has(State const& S, Expr const& sym)
+{
+    // måste översätta Expr till pool-ids...
+}
+
+
+template<class FUN>
+static void forEachSynthSubst(uind s, Vec<State> const& state, Vec<uind> const& parent, Pool const& pool,
+                              Arr<Arr<Expr>> const& synth_subst, FUN callback, uint ss = 0, Vec<Pair<Expr,Expr>>* substs = nullptr)
+{
+    Vec<Pair<Expr,Expr>> tmp;
+    if (!substs) substs = &tmp;
+
+    if (ss == synth_subst.size())
+        callback(genTrainingData(s, state, parent, pool)); // + seed + substs
+    else{
+        Expr const& lhs = synth_subst[ss][0];
+        if (!has(state[s], lhs))
+            forEachSynthSubst(s, state, parent, pool, synth_subst, callback, ss+1, substs);
+        else{
+            for (uint i = 1; i < synth_subst[ss].size(); i++){
+                Expr const& rhs = synth_subst[ss][i];
+                substs->push(tuple(lhs, rhs));
+                // <<== räcker kanske att substa i 'pool'? (var rerunnar program för ny hash?)
+                forEachSynthSubst(s, state, parent, pool, synth_subst, callback, ss+1, substs);
+                substs->pop();
+            }
+        }
+    }
+}
+#endif
+
+
 void RandomFuncs::eval(state_id s)
 {
+    last_cost = cost[s];
+
     assert(spec.test_hash.type[1] == Type(a_Int));
 
     Expr expr = state[s].expr(spec.pool);
@@ -235,12 +294,46 @@ void RandomFuncs::eval(state_id s)
                     wrLn("\a*-->  %s\a*", vec);
                     newLn();
 
+                    // Store result:
+                    if (P.training_data_pfx != ""){
+                        ::CodeBreeder::TrainingProto tr_proto;
+                        genTrainingData(s, state, parent, pool[s]).toProto(&tr_proto);
+
+                        String basename = fmt("%_.%_", P.training_data_pfx, found.size());
+                        OutFile out(fmt("%_.tr.gz", basename));
+                        if (!out){ wrLn("ERROR! Failed to create file: %_.tr.gz", basename); exit(1); }
+                        out += slice(tr_proto.SerializeAsString());
+
+                        OutFile out_hash(fmt("%_.hash"));
+                        if (!out_hash){ wrLn("ERROR! Failed to create file: %_.hash", basename); exit(1); }
+                        puti(out_hash, hash_val);
+                        putu(out_hash, state[s].size());
+                    }
+
                     found.push(s);
 
-                    // Time to terminate?
-                    if (found.size() == P.n_funcs_to_generate)
-                        Q.clear();
-                // <<== extract positive and negative training examples here
+#if 0
+                        uint subst_idx = 0;
+                        forEachSynthSubst(s, state, parent, pool[s], spec.synth_subst, [&](TrainingData const& tr){
+                            ::CodeBreeder::TrainingProto tr_proto;
+                            tr.toProto(&tr_proto);
+
+                            String basename = fmt("%_.%_.%_", P.training_data_pfx, found.size(), subst_idx);
+                            subst_idx++;
+
+                            OutFile out(fmt("%_.tr.gz", basename));
+                            if (!out){ wrLn("ERROR! Failed to create file: %_.tr.gz", basename); exit(1); }
+                            out += slice(tr_proto.SerializeAsString());
+
+                            OutFile out_hash(fmt("%_.hash"));
+                            if (!out_hash){ wrLn("ERROR! Failed to create file: %_.hash", basename); exit(1); }
+                            puti(out_hash, hash_val);
+                            putu(out_hash, state[s].size());
+                        });
+                    }
+
+                    found.push(s);
+#endif
                 }
 
             }else if (P.verbosity >= 3){
@@ -249,7 +342,6 @@ void RandomFuncs::eval(state_id s)
                 else
                     wrLn("REDUNDANT:\n%_", ppFmtI(expr, 4));
             }
-
         }
     }catch (Excp_ParseError err){
         /**/wrLn("COMPILE ERROR:\n%_", ppFmt(expr));
@@ -257,6 +349,10 @@ void RandomFuncs::eval(state_id s)
         ret_code = 2;
     }
     rt.pop();
+
+    // Time to terminate?
+    if (found.size() == P.n_funcs_to_generate || (P.timeout != 0 && cpuTime() - T0 >= P.timeout) || (P.memout != 0 && memUsed() >= P.memout))
+        Q.clear();
 }
 
 
@@ -266,7 +362,8 @@ void RandomFuncs::eval(state_id s)
 void generateRandomFunctions(String spec_filename, Params_RandFun const& P)
 {
     Spec spec = readSpec(spec_filename, false); assert(spec.prog.kind == expr_Block);
-    assert(spec.target.name == a_Fun);
+    if (spec.target.name != a_Fun){ wrLn("ERROR! Target must be of function type, not: %_", spec.target); exit(1); }
+    if (!spec.pool){ wrLn("ERROR! No symbol pool defined. Please add 'let syms = (...)' definition."); exit(1); }
 
     if (P.verbosity >= 1){
         wrLn("\a*TARGET:\a* %_", spec.target);
@@ -283,35 +380,5 @@ void generateRandomFunctions(String spec_filename, Params_RandFun const& P)
 }
 
 
-//
-//    Vec<Expr> new_prog(copy_, prog);
-//    spec.prog = Expr::Block(new_prog);
-
-
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 }
-
-
-/*
-Christian's functions:
-
-to_range_inclusive_
-sum_
-prod_
-
-fun list_exists_<A>(list :List<A>, pred_ :A->Bool) -> Bool {
-    not_(list_for_all_<A>(list, compose_(not_, pred_))); };
-
-
-data DivisionByZero = {()};
-
-fun safe_div_(n :Int, m :Int) -> Int {
-   if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
-   div_(n, m);
-};
-
-fun safe_mod_(n :Int, m :Int) -> Int {
-   if_(eq_(m, 0), `throw_<(), DivisionByZero>(DivisionByZero.0()));
-   cond_<Int>(negative_(n), `mod_(neg_(n),m), `mod_(n,m));
-};
-*/

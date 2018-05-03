@@ -313,14 +313,14 @@ def general_eval(make_metrics, hparams, make_hooks=None, eval_dir=None):
   with tf.device(tf.train.replica_device_setter(FLAGS.ps_tasks,
                                                 merge_devices=True)):
     # Generate metrics
-    with tf.variable_scope(''):
+    with tf.variable_scope(tf.get_variable_scope()):
       metric_ops = make_metrics()
 
     # Evaluate
     accuracies, updates = zip(*metric_ops)
 
     if make_hooks is not None:
-      with tf.variable_scope('', reuse=True):
+      with tf.variable_scope(tf.get_variable_scope(), reuse=True):
         hooks.extend(make_hooks())
 
     training.evaluate_repeatedly(

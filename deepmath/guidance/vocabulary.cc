@@ -57,8 +57,8 @@ void Vocabulary::Initialize(tensorflow::StringPiece path) {
   // Load vocabulary
   {
     string all_vocab;
-    TF_CHECK_OK(tensorflow::ReadFileToString(
-        tensorflow::Env::Default(), path.ToString(), &all_vocab));
+    TF_CHECK_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(),
+                                             std::string(path), &all_vocab));
     for (const auto& raw_word : tensorflow::str_util::Split(all_vocab, '\n')) {
       tensorflow::StringPiece word = raw_word;
       tensorflow::str_util::RemoveWhitespaceContext(&word);
@@ -73,7 +73,7 @@ void Vocabulary::Initialize(tensorflow::StringPiece path) {
           id_to_vocab_.push_back("X");
         }
       } else {
-        id_to_vocab_.push_back(word.ToString());
+        id_to_vocab_.push_back(std::string(word));
       }
     }
   }

@@ -94,6 +94,7 @@ py_library(
     srcs = ["loom_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//third_party/py/tensorflow_probability",
         "@org_fold//tensorflow_fold/public:loom",
         "@org_tensorflow//tensorflow:tensorflow_py",
         "@six_archive//:six",

@@ -10,6 +10,13 @@ py_binary(
     name = "parser",
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
+    deps = [":parser_lib"],
+)
+
+py_library(
+    name = "parser_lib",
+    srcs = ["parser.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -17,7 +24,7 @@ py_test(
     srcs = ["parser_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":parser",
+        ":parser_lib",
         "@org_tensorflow//tensorflow:tensorflow_py",
     ],
 )

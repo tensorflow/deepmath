@@ -20,7 +20,11 @@ cc_library(
         "printer.h",
         "trace.h",
     ],
-    deps = ["@org_tensorflow//tensorflow/core:lib"],
+    deps = [
+        "//util/gtl:node_hash_map",
+        "//util/gtl:node_hash_set",
+        "@org_tensorflow//tensorflow/core:lib",
+    ],
 )
 
 cc_binary(

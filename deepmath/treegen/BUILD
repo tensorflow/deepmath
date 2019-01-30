@@ -37,6 +37,13 @@ py_binary(
     name = "arith_make_data",
     srcs = ["arith_make_data.py"],
     srcs_version = "PY2AND3",
+    deps = [":arith_make_data_lib"],
+)
+
+py_library(
+    name = "arith_make_data_lib",
+    srcs = ["arith_make_data.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":arith_utils",
         ":binary_trees",
@@ -51,7 +58,7 @@ py_test(
     srcs = ["arith_make_data_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":arith_make_data",
+        ":arith_make_data_lib",
         ":arith_utils",
         "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
@@ -64,7 +71,7 @@ py_test(
     shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
-        ":arith_make_data",
+        ":arith_make_data_lib",
         ":arith_model",
         "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
@@ -94,6 +101,7 @@ py_library(
     srcs = ["loom_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//third_party/py/tensorflow_probability",
         "@org_fold//tensorflow_fold/public:loom",
         "@org_tensorflow//tensorflow:tensorflow_py",
         "@six_archive//:six",

@@ -20,12 +20,16 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-
 layers = tf.contrib.layers
 slim = tf.contrib.slim
 
 
-def wavenet_layer(inp, depth, width=3, rate=1, context=None, scope=None,
+def wavenet_layer(inp,
+                  depth,
+                  width=3,
+                  rate=1,
+                  context=None,
+                  scope=None,
                   reuse=None):
   """Single wavenet layer.
 
@@ -56,17 +60,19 @@ def wavenet_layer(inp, depth, width=3, rate=1, context=None, scope=None,
     current_shape = inp.get_shape()
     true_shape = tf.shape(inp)
     in_depth = current_shape[3].value
-    mul = 2 ** (rate - 1)
-    reshaped = tf.reshape(inp,
-                          [true_shape[0],
-                           true_shape[1]//mul,
-                           mul*true_shape[2],
-                           in_depth])
+    mul = 2**(rate - 1)
+    reshaped = tf.reshape(
+        inp,
+        [true_shape[0], true_shape[1] // mul, mul * true_shape[2], in_depth])
 
-    conved = slim.conv2d(reshaped, 2*depth, [width, 1], rate=1,
-                         padding='SAME', activation_fn=None)
+    conved = slim.conv2d(
+        reshaped,
+        2 * depth, [width, 1],
+        rate=1,
+        padding='SAME',
+        activation_fn=None)
     if context is not None:
-      conved += layers.linear(context, 2*depth)[:, None, None, :]
+      conved += layers.linear(context, 2 * depth)[:, None, None, :]
 
     act = tf.nn.tanh(conved[:, :, :, :depth])
     gate = tf.nn.sigmoid(conved[:, :, :, depth:])
@@ -79,27 +85,45 @@ def wavenet_layer(inp, depth, width=3, rate=1, context=None, scope=None,
     return z + reshaped
 
 
-def wavenet_block(net, num_layers, depth, context=None, scope=None, reuse=None,
-                  width=3):
+def wavenet_block(net,
+                  num_layers,
+                  depth,
+                  comb_weight=1.0,
+                  context=None,
+                  scope=None,
+                  reuse=None,
+                  width=3,
+                  keep_prob=1.0):
   """Stack many increasingly dilated wavenet layers together.
 
   Arguments:
     net: input tensor, expected to be 4D to start [batch, text_length, 1, dim]
-    num_layers: Number of wavenet layers to apply in the block, note that
-      This requires the input text_length to be divisible by 2**num_layers.
+    num_layers: Number of wavenet layers to apply in the block, note that This
+      requires the input text_length to be divisible by 2**num_layers.
     depth: The depth to use for each of the wavenet layers, internally.
+    comb_weight: The weight for the residual update (multiplies the residual
+      value).
     context: Optional 2-D tensor on which to condition each node.
     scope: Name of scope if given.
     reuse: Reuse for variable scope if given.
     width: Patch size of the convolution.
+    keep_prob: Keep probability for the block input dropout.
 
   Returns:
     output: output tensor, reshaped back to be [batch, text_length, 1, dim]
   """
+  inp = net
   tf.logging.info('Creating wavenet block with width %d', width)
   with tf.variable_scope(scope, 'wavenet_block', [net], reuse=reuse):
     # first wavenet layer is a rate=1 conv.
     input_shape = tf.shape(net)
+    if keep_prob < 1.0:
+      inp_shape = tf.shape(net)
+      noise_shape=(inp_shape[0], 1, inp_shape[2], inp_shape[3])
+      net = tf.nn.dropout(
+          net,
+          rate=(1.0 - keep_prob),
+          noise_shape=noise_shape)
     net = wavenet_layer(net, depth, rate=1, width=width)
     for _ in range(num_layers):
       # repeated layers are rate=2 but operate on subsequently reshaped inputs.
@@ -107,4 +131,4 @@ def wavenet_block(net, num_layers, depth, context=None, scope=None, reuse=None,
       net = wavenet_layer(net, depth, rate=2, width=width, context=context)
     # reshape back at top of block
     net = tf.reshape(net, input_shape)
-  return net
+  return comb_weight * net + inp

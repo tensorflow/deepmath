@@ -46,7 +46,7 @@ flags.DEFINE_integer('log_every_n_iter', 100,
                      'Number of iterations between logging.')
 
 # Distributed training flags
-flags.DEFINE_string('master', '', 'Master argument for supervisor.')
+flags.DEFINE_string('super_master', '', 'Master argument for supervisor.')
 flags.DEFINE_integer('task', 0,
                      'The Task ID. This flag is used when training with '
                      'multiple workers to identify each worker.')
@@ -204,7 +204,7 @@ def general_train(make_loss, hparams, make_hooks=None):
       save_summaries_steps = FLAGS.save_summaries_steps
       save_summaries_secs = None
     with tf.train.MonitoredTrainingSession(
-        master=FLAGS.master,
+        master=FLAGS.super_master,
         is_chief=is_chief,
         hooks=hooks,
         chief_only_hooks=chief_only_hooks,
@@ -313,19 +313,19 @@ def general_eval(make_metrics, hparams, make_hooks=None, eval_dir=None):
   with tf.device(tf.train.replica_device_setter(FLAGS.ps_tasks,
                                                 merge_devices=True)):
     # Generate metrics
-    with tf.variable_scope(''):
+    with tf.variable_scope(tf.get_variable_scope()):
       metric_ops = make_metrics()
 
     # Evaluate
     accuracies, updates = zip(*metric_ops)
 
     if make_hooks is not None:
-      with tf.variable_scope('', reuse=True):
+      with tf.variable_scope(tf.get_variable_scope(), reuse=True):
         hooks.extend(make_hooks())
 
     training.evaluate_repeatedly(
         checkpoint_dir=train_dir,
-        master=FLAGS.master,
+        master=FLAGS.super_master,
         eval_ops=updates,
         final_ops=accuracies,
         eval_interval_secs=FLAGS.eval_interval_secs,

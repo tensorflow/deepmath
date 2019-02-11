@@ -1,0 +1,209 @@
+syntax = "proto2";
+
+package n2formal_deephol;
+import "deepmath/prover/hol_light/hol_light.proto";
+
+message IntegerInterval {
+  // A closed interval of integer values for random sampling.
+  // Note that both values are included in the interval.
+  // Minimum value of the interval (inclusive)
+  optional int32 min_value = 1;
+  // Maximum value of the interval (inclusive)
+  optional int32 max_value = 2;
+}
+
+message BFSMetaOptions {
+  // Options for sampling option values for BFSOptions.
+  // Each interval specifies a closed interval from which the
+  // the option values are sampled with uniform probability.
+  // For the explanations of the inidividual options, see the
+  // option in BFSOptions with the same name.
+  optional IntegerInterval max_top_suggestions = 1;
+  optional IntegerInterval max_successful_branches = 2;
+  optional IntegerInterval max_explored_nodes = 3;
+  optional IntegerInterval min_successful_branches = 4;
+  optional IntegerInterval max_theorem_parameters = 5;
+}
+// Options for breadth-first search.
+message BFSOptions {
+  // Top-k suggestions considered for each node unless max_successful branches
+  // is reached.
+  optional int32 max_top_suggestions = 1 [default = 20];
+  // Maximum successful branches, we don't try more than this many tactic
+  // applications per_node.
+  optional int32 max_successful_branches = 2 [default = 2];
+  // Maximum number of goals expanded during the search.
+  optional int32 max_explored_nodes = 3 [default = 200];
+  // Minimum number of successful branches
+  // Tactics will be tried until running out of tactics applications
+  // or min_successful_branches is reached.
+  // If min_successful_branches is reached then the tactics applications
+  // will stop if max_top_suggestions are reached or max_successful_branches
+  // number of tactics are successfully applied.
+  optional int32 min_successful_branches = 4 [default = 1];
+  // Options to sample BFS parameters randomly.
+  optional BFSMetaOptions meta_options = 5;
+}
+
+message ActionGeneratorOptions {
+  // Maximum number of tactic arugments of thereom type.
+  optional int32 max_theorem_parameters = 1 [default = 24];
+  // Use ASM_MESON_TAC [...] with parameters specified by passed in model.
+  optional bool asm_meson_only = 2 [default = false];
+  // Use ASM_MESON_TAC [] with no parameters.
+  optional bool asm_meson_no_params_only = 3 [default = false];
+}
+
+// Prover round stores information about phases of the proving
+// during the automated proving-training loop.
+message ProverRound {
+  // Seconds since start of epoch for the start of the round.
+  optional int64 start_seconds = 1;
+  // Tag for the overall loop. (The name of the whole loop).
+  optional string tag = 2;
+  // Index of the proving round, starting at 0 for the first round.
+  // -1 should be set for individual manual runs.
+  optional int32 round = 3;
+}
+
+message ProverOptions {
+  // Model Architecture used for selecting the predictor.
+  enum ModelArchitecture {
+    PAIR_DEFAULT = 0;
+    HIST_AVG = 1;
+    HIST_CONV = 2;
+    HIST_ATT = 3;
+    PARAMETERS_CONDITIONED_ON_TAC = 4;
+  }
+  optional string path_theorem_database = 1;
+  optional string path_model_prefix = 2;
+  optional string path_tactics = 3;
+  optional string path_tactics_replace = 4;
+  // File name pointing to a serialized numpy array that can be loaded by
+  // the EmbeddingStore.
+  optional string theorem_embeddings = 5;
+  // Deprecated, we no longer load a builtin library in stateless hol light.
+  optional string builtin_library = 6 [default = 'core', deprecated = true];
+  // Currently supported provers: "nobacktrack", "bfs".
+  optional string prover = 7;
+  optional BFSOptions bfs_options = 8;
+  // Which splits should be attempted. If empty, then the TESTING split is
+  // attempted.
+  repeated n2formal_hol_light.Theorem.Split splits_to_prove = 9;
+  // Approximate timeout for the proving of a single theorem.
+  // Note that this timeout is respected only very approximately, checked after
+  // each tactic applications. Timeouts less than 10 seconds are probably not
+  // respected at all.
+  optional float timeout_seconds = 10 [default = 1000000.0];
+  optional string path_emb_model_prefix = 11;
+  optional ModelArchitecture model_architecture = 12;
+  optional ActionGeneratorOptions action_generator_options = 13;
+  // For the automated prove-train loop: rounds might be labeled.
+  optional ProverRound prover_round = 14;
+  // Set to false if we don't use the built-in theorem parameter pruning method.
+  optional bool prune_theorem_parameters = 15 [default = true];
+  // If nonempty: only the theorems with library tag in this list will be
+  // processed (current set of tags: "core", "complex", "flyspeck").
+  repeated string library_tags = 16;
+}
+
+message ProofLog {
+  repeated ProofNode nodes = 1;
+  optional string error_message = 2;
+  optional int64 num_proofs = 3;
+  optional ProverOptions prover_options = 4;
+  // Time spent in proof search (msecs, real time).
+  optional int64 time_spent = 5;
+  // Set to true if the prover has rejected proving this task for some
+  // pre-existing internal error.
+  optional bool rejected = 6 [default = false];
+  // All build data of binary that produced the log. Includes time built, build
+  // user, CitC client info, etc.
+  optional string build_data = 7;
+  // The prover task used for generating this log.
+  optional n2formal_hol_light.ProverTask prover_task = 8;
+  // Theorem that is actually logged in the database that this is a proof of.
+  optional n2formal_hol_light.Theorem theorem_in_database = 9;
+}
+
+message ProofNode {
+  // Status of the whole subtree rooted at this node.
+  enum Status {
+    UNKNOWN = 0;
+    // This goal has been proved by one of the tactic applications.
+    PROVED = 1;
+    // This goal is refuted (proved to be incorrect).
+    REFUTED = 2;
+  }
+  optional n2formal_hol_light.Theorem goal = 1;
+  repeated TacticApplication proofs = 2;
+  // Status of the proof-node in this search tree.
+  optional Status status = 3 [default = UNKNOWN];
+  // Time spent in the action generation of this node.
+  optional int64 action_generation_time_millisec = 4;
+}
+
+message Tactic {
+  enum ParameterType {
+    UNKNOWN = 0;
+    VARIABLE = 1;
+    TERM = 2;
+    THEOREM = 3;
+    THEOREM_LIST = 4;
+    CONV = 5;
+  }
+  optional int64 id = 1;
+  optional string name = 2;
+  repeated ParameterType parameter_types = 3;
+}
+
+message TacticApplication {
+  // Result of this particular application.
+  enum Result {
+    // Should never occur.
+    UNKNOWN = 0;
+    // Could not apply tacti, due to some error reported by HOL-light.
+    ERROR = 1;
+    // Tactics application has timed out.
+    TIMEOUT = 2;
+    // Goal remained unchanged, in this case the subgoals list can be empty.
+    UNCHANGED = 3;
+    // Tactic is applied successfully and the goal list is different froom the
+    // original goal.
+    SUCCESS = 4;
+  }
+
+  optional string tactic = 1;
+  repeated TacticParameter parameters = 2;
+  // Subgoals are order as returned by HOL-light.
+  repeated n2formal_hol_light.Theorem subgoals = 3;
+  // Result of the tactics application.
+  optional Result result = 4;
+  // Error message in case of ERROR.
+  optional string error_message = 5;
+  // Time in milli-seconds spent in tactics application.
+  optional int32 time_spent = 6;
+  // True if this subtree was closed (successfully proved) during proof search.
+  optional bool closed = 7 [default = false];
+  // Score given by the ActionGenerator.
+  optional float score = 8;
+  // Zero-based index in the sorted list of suggestions of ActionGenerator.
+  // Highest rated suggestions are reported first. (Lower rank is better.)
+  optional int32 rank = 9;
+}
+
+message TacticsInfo {
+  repeated Tactic tactics = 1;
+}
+
+message TacticParameter {
+  optional Tactic.ParameterType parameter_type = 1;
+
+  // exactly one of the following must be set (oneof does not support repeated)
+  repeated n2formal_hol_light.Theorem theorems = 2;  // also for single theorems
+  optional string term = 3;
+  optional string conv = 4;
+  optional string unknown = 5;
+  // Optional: hard negative theorems.
+  repeated n2formal_hol_light.Theorem hard_negative_theorems = 6;
+}

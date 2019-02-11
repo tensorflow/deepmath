@@ -1,0 +1,204 @@
+syntax = "proto2";
+
+package n2formal_hol_light;
+
+message Goal {
+  // Note: the order of assumptions here is reversed compared to interactive
+  // mode; see print_hyps in tactics.ml of HOL Light source.
+  repeated string assum = 1;
+  optional string goal = 2;
+}
+
+message GoalList {
+  // If there are no goals, nothing remains to be proven.
+  repeated Goal goals = 1;
+}
+
+message Definition {
+  // A definition of a constant.
+  // The field definition_type is one of BASIC/PAIR/DRULE/DEFINE/RECURSIVE/
+  // INDUCTIVE/SPEC.
+  optional string definition_type = 1;
+  // All but SPEC definitions define a term
+  optional string definition_term = 2;
+  // The constants introduced by this definition
+  repeated string constants = 3;
+  // Fingerprint of a theorem; only for RECURSIVE definitions and specifications
+  optional int64 theorem_arg = 4;
+}
+
+message TypeDefinition {
+  // A definition of a type. Directly corresponds to function
+  // new_type_definition.
+  optional string type_name = 1;
+  optional string abs_name = 2;
+  optional string rep_name = 3;
+  optional int64 theorem_arg = 4;
+
+  // There are other functions in HOL Light than new_type_definition that allow
+  // us to introduce types, but:
+  //
+  // define_finite_type covered by new_type_definition
+  //
+  // define_type_raw is only used by define_type
+  //
+  // define_inductive_type is only used within define_type_raw
+  //
+  // new_type is just used once in core to introduce 'ind'
+  //
+  // define_type core, complex, or flyspeck
+  //
+  // new_basic_type_definition only used in core
+}
+
+message Theorem {
+  enum Tag {
+    GOAL = 0;
+    THEOREM = 1;
+    DEFINITION = 2;
+    TYPE_DEFINITION = 3;
+  }
+  enum Split {
+    // Default value in case the split information is not relevant.
+    UNKNOWN = 0;
+    // The theorem was trained on.
+    TRAINING = 1;
+    // The theorem was used in monitoring the training process.
+    VALIDATION = 2;
+    // The theorem was not used during the training process in any way.
+    TESTING = 3;
+  }
+  optional string name = 4;
+  repeated string hypotheses = 1;
+  optional string conclusion = 2;
+  optional Tag tag = 3;
+  optional Split training_split = 5;
+  optional int64 fingerprint = 6;
+  // Contains all the information needed to introduce a constant.
+  // Only used when tag = DEFINITION is set
+  optional Definition definition = 7;
+  // Contains all the information needed to introduce a type.
+  optional TypeDefinition type_definition = 8;
+  // Indicates the library, i.e. "core", "complex", or "flyspeck"
+  repeated string library_tag = 9;
+  // Human-readable version by HOL Light's pretty printer.
+  // Currently NOT guaranteed to be parseable by HOL Light.
+  optional string pretty_printed = 10;
+  // Indicates the type of proof function used, TAC_PROOF, prove_by_refinement,
+  // or specification.
+  optional string proof_function = 11;
+  // Fingerprint of the goal that resulted in this theorem. Used for exporting
+  // proofs.
+  optional int64 goal_fingerprint = 12;
+}
+
+enum TermEncoding {
+  TE_UNKNOWN = 0;
+  TE_PRETTY = 1;
+  TE_SEXP = 2;
+}
+
+message ApplyTacticRequest {
+  optional Goal goal = 1;
+  // The tactic is formatted as a string in Polish notation. Supported tactics
+  // are listed in parse_tactic.ml
+  optional string tactic = 2;
+  optional TermEncoding term_encoding = 3 [default = TE_SEXP];
+}
+
+message ApplyTacticResponse {
+  oneof result {
+    GoalList goals = 1;
+    string error = 2;
+  }
+}
+
+message VerifyProofRequest {
+  optional Goal goal = 1;
+  optional Theorem theorem = 4;
+  // Tactics are formatted as in ApplyTacticRequest, and given in the order of
+  // application. That is, if a tree of goals is constructed through successive
+  // calls to ApplyTactic, preserving the order of child nodes in
+  // ApplyTacticResponse, then a depth-first search of the tree gives the list
+  // of tactics required here.
+  repeated string tactics = 2;
+  optional TermEncoding term_encoding = 3 [default = TE_SEXP];
+}
+
+message VerifyProofResponse {
+  optional bool sound = 1;
+  optional string error_msg = 2;
+}
+
+service HolLightService {
+  // Determines the result of applying a tactic to a goal.
+  rpc ApplyTactic(ApplyTacticRequest) returns (ApplyTacticResponse) {}
+  // Verifies that a sequence of tactics proves a goal using the HOL Light core.
+  rpc VerifyProof(VerifyProofRequest) returns (VerifyProofResponse) {}
+}
+
+// Note: Ordering of theorems is important. Theorems later only use those that
+// appear earlier when they were proved.
+message TheoremDatabase {
+  repeated Theorem theorems = 1;
+  // Unique reference to this library. Used in PremiseSets to reference this
+  // database.
+  optional string name = 2;
+}
+
+// A consecutive section of premises (theorems and definitions) from a database
+// starting at the first premise of the database, ending with the specified
+// premise (but excluding it).
+message DatabaseSection {
+  // The name of the database we are taking a section of theorems for premise
+  // selection purposes in ProverTasks.
+  optional string database_name = 1;
+  // We take each theorem in the database that precede this premise, but
+  // we exclude this specific premise (theorem or definition) from our
+  // list of admissible premises.
+  optional uint64 before_premise = 2;
+}
+
+// An arbitrary subset of theorems and definitions from one theorem database
+// that we want to allow to select premises from during proof search.
+message PremiseReferenceSet {
+  // Name of the database to select the premises from.
+  optional string database_name = 1;
+  // A list of the fingerprints of all premises we would like to allow from
+  // this database.
+  repeated uint64 premise_fingerprints = 2;
+}
+
+// Definition of the premise set for specifying a subset of premises that are
+// allowed for proving a goal.
+message PremiseSet {
+  // Individual theorems/definitions we additionally allow for proving a
+  // statement. This is the most efficient way to represent a large number
+  // of premises to select from. In the current implementation only one
+  // section is supported.
+  repeated DatabaseSection sections = 1;
+  // Individual theorems/definitions we additionally allow for proving a
+  // statement. These references don't have to form a consecutive section,
+  // but each PremiseReferences object holds references to premises in the
+  // same database. Current prover does not support selecting from an arbitrary
+  // set of references, so we will fail if this field is set.
+  repeated PremiseReferenceSet reference_sets = 2;
+}
+
+// A single task (a set of goal theorems) to be proved by the prover.
+// The task is to prove as many of the goals as possible, where generated
+// subgoals during proof-search might be shared. However, currently we
+// only support a single goal.
+message ProverTask {
+  // Specification of all the premises that are allowed to be used.
+  optional PremiseSet premise_set = 1;
+  // Goals to be proved.
+  repeated Theorem goals = 2;
+}
+
+// A list of prover tasks. Allows to have a single prover task with all the
+// theorems to be proved. Scalable only if we have at most 100K tasks in
+// this list. Otherwise a RecordIO or SSTable of individual tasks is preferable.
+message ProverTaskList {
+  repeated ProverTask tasks = 1;
+}

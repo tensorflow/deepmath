@@ -16,24 +16,6 @@ load(
 tf_proto_library(
     name = "deephol_proto",
     srcs = ["deephol.proto"],
-    cc_api_version = 2,
-    deps = ["//deepmath/prover/hol_light:hol_light_proto"],
-)
-
-py_proto_library(
-    name = "deephol_py_pb2",
-    api_version = 2,
-    deps = [":deephol_proto"],
-)
-
-cc_proto_library(
-    name = "deephol_cc_proto",
-    deps = [":deephol_proto"],
-)
-
-load("//devtools/clif/python:clif_build_rule.bzl", "pyclif_proto_library")
-
-pyclif_proto_library(
-    name = "deephol_pyclif",
-    proto_lib = ":deephol_proto",
+    protodeps = ["//deepmath/prover/hol_light:hol_light_proto"],
+    visibility = ["//visibility:public"],
 )

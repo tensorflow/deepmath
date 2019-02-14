@@ -24,3 +24,21 @@ py_library(
     name = "process_sexp",
     srcs = ["process_sexp.py"],
 )
+
+py_library(
+    name = "mock_predictions_lib",
+    srcs = ["mock_predictions_lib.py"],
+    deps = [
+        ":predictions",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "predictions",
+    srcs = ["predictions.py"],
+    deps = [
+        ":process_sexp",
+        "//third_party/py/numpy",
+    ],
+)

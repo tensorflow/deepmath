@@ -19,3 +19,8 @@ tf_proto_library(
     protodeps = ["//deepmath/prover/hol_light:hol_light_proto"],
     visibility = ["//visibility:public"],
 )
+
+py_library(
+    name = "process_sexp",
+    srcs = ["process_sexp.py"],
+)

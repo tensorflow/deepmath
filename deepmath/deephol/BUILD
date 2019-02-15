@@ -21,6 +21,17 @@ tf_proto_library(
 )
 
 py_library(
+    name = "holparam_predictor",
+    srcs = ["holparam_predictor.py"],
+    deps = [
+        ":predictions",
+        "//third_party/py/numpy",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+        "@org_tensorflow//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
     name = "process_sexp",
     srcs = ["process_sexp.py"],
 )

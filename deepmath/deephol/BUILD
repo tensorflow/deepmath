@@ -42,3 +42,16 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
+py_test(
+    name = "predictions_test",
+    size = "medium",
+    srcs = ["predictions_test.py"],
+    deps = [
+        ":mock_predictions_lib",
+        ":predictions",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)

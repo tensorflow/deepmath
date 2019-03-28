@@ -38,7 +38,7 @@ def Fingerprint(theorem):
   """Compute a unique, stable fingerprint for theorem objects.
 
   Args:
-    theorem: hol_light_pb2.Theorem object
+    theorem: proof_assistant_pb2.Theorem object
 
   Returns:
     62 bit non-negative integer fingerprint. Note that we truncate to 62 bits
@@ -62,7 +62,7 @@ def ToTacticArgument(theorem):
   """Return a representation of the theorem as a tactic argument label.
 
   Args:
-    theorem: hol_light_pb2.Theorem object
+    theorem: proof_assistant_pb2.Theorem object
 
   Returns:
     String that can be used as a tactic argument.

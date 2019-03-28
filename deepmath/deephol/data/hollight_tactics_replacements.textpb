@@ -1,0 +1,15 @@
+# Replace following hollight_tactic IDs.
+tactics {
+  id: 8
+  name: "GEN_TAC"  # was X_GEN_TAC
+}
+tactics {
+  id: 11
+  name: "MESON_TAC"  # was ITAUT_TAC
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 34
+  name: "CHOOSE_TAC"  # was X_CHOOSE_TAC
+  parameter_types: THEOREM
+}

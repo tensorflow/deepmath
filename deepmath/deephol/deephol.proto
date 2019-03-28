@@ -1,7 +1,7 @@
 syntax = "proto2";
 
-package n2formal_deephol;
-import "deepmath/prover/hol_light/hol_light.proto";
+package deepmath_deephol;
+import "deepmath/proof_assistant/proof_assistant.proto";
 
 message IntegerInterval {
   // A closed interval of integer values for random sampling.
@@ -89,7 +89,7 @@ message ProverOptions {
   optional BFSOptions bfs_options = 8;
   // Which splits should be attempted. If empty, then the TESTING split is
   // attempted.
-  repeated n2formal_hol_light.Theorem.Split splits_to_prove = 9;
+  repeated deepmath.Theorem.Split splits_to_prove = 9;
   // Approximate timeout for the proving of a single theorem.
   // Note that this timeout is respected only very approximately, checked after
   // each tactic applications. Timeouts less than 10 seconds are probably not
@@ -121,9 +121,9 @@ message ProofLog {
   // user, CitC client info, etc.
   optional string build_data = 7;
   // The prover task used for generating this log.
-  optional n2formal_hol_light.ProverTask prover_task = 8;
+  optional deepmath.ProverTask prover_task = 8;
   // Theorem that is actually logged in the database that this is a proof of.
-  optional n2formal_hol_light.Theorem theorem_in_database = 9;
+  optional deepmath.Theorem theorem_in_database = 9;
 }
 
 message ProofNode {
@@ -135,7 +135,7 @@ message ProofNode {
     // This goal is refuted (proved to be incorrect).
     REFUTED = 2;
   }
-  optional n2formal_hol_light.Theorem goal = 1;
+  optional deepmath.Theorem goal = 1;
   repeated TacticApplication proofs = 2;
   // Status of the proof-node in this search tree.
   optional Status status = 3 [default = UNKNOWN];
@@ -176,7 +176,7 @@ message TacticApplication {
   optional string tactic = 1;
   repeated TacticParameter parameters = 2;
   // Subgoals are order as returned by HOL-light.
-  repeated n2formal_hol_light.Theorem subgoals = 3;
+  repeated deepmath.Theorem subgoals = 3;
   // Result of the tactics application.
   optional Result result = 4;
   // Error message in case of ERROR.
@@ -200,10 +200,10 @@ message TacticParameter {
   optional Tactic.ParameterType parameter_type = 1;
 
   // exactly one of the following must be set (oneof does not support repeated)
-  repeated n2formal_hol_light.Theorem theorems = 2;  // also for single theorems
+  repeated deepmath.Theorem theorems = 2;  // also for single theorems
   optional string term = 3;
   optional string conv = 4;
   optional string unknown = 5;
   // Optional: hard negative theorems.
-  repeated n2formal_hol_light.Theorem hard_negative_theorems = 6;
+  repeated deepmath.Theorem hard_negative_theorems = 6;
 }

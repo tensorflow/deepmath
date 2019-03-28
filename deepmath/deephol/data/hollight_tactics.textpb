@@ -1,0 +1,196 @@
+tactics {
+  id: 0
+  name: "EXISTS_TAC"
+  parameter_types: TERM
+}
+tactics {
+  id: 1
+  name: "ARITH_TAC"
+}
+tactics {
+  id: 2
+  name: "DISJ_CASES_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 3
+  name: "RAW_POP_TAC"
+  parameter_types: UNKNOWN
+}
+tactics {
+  id: 4
+  name: "REAL_ARITH_TAC"
+}
+tactics {
+  id: 5
+  name: "REWRITE_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 6
+  name: "MATCH_ACCEPT_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 7
+  name: "EQ_TAC"
+}
+tactics {
+  id: 8
+  name: "X_GEN_TAC"
+  parameter_types: TERM
+}
+tactics {
+  id: 9
+  name: "BACKCHAIN_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 10
+  name: "RAW_SUBGOAL_TAC"
+  parameter_types: TERM
+}
+tactics {
+  id: 11
+  name: "ITAUT_TAC"
+}
+tactics {
+  id: 12
+  name: "UNDISCH_TAC"
+  parameter_types: TERM
+}
+tactics {
+  id: 13
+  name: "DISCH_TAC"
+}
+tactics {
+  id: 14
+  name: "ASM_METIS_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 15
+  name: "MP_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 16
+  name: "RAW_CONJUNCTS_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 17
+  name: "REAL_ARITH_TAC2"
+}
+tactics {
+  id: 18
+  name: "ACCEPT_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 19
+  name: "MK_COMB_TAC"
+}
+tactics {
+  id: 20
+  name: "PURE_REWRITE_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 21
+  name: "ABS_TAC"
+}
+tactics {
+  id: 22
+  name: "MATCH_MP_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 23
+  name: "DISJ2_TAC"
+}
+tactics {
+  id: 24
+  name: "RAW_POP_ALL_TAC"
+}
+tactics {
+  id: 25
+  name: "PURE_ONCE_REWRITE_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 26
+  name: "SUBST1_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 27
+  name: "CONV_TAC"
+  parameter_types: CONV
+}
+tactics {
+  id: 28
+  name: "SIMP_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 29
+  name: "ANTS_TAC"
+}
+tactics {
+  id: 30
+  name: "CONTR_TAC"
+  parameter_types: THEOREM
+}
+tactics {
+  id: 31
+  name: "CONJ_TAC"
+}
+tactics {
+  id: 32
+  name: "ASM_MESON_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 33
+  name: "REFL_TAC"
+}
+tactics {
+  id: 34
+  name: "X_CHOOSE_TAC"
+  parameter_types: TERM
+  parameter_types: THEOREM
+}
+tactics {
+  id: 35
+  name: "DISJ1_TAC"
+}
+tactics {
+  id: 36
+  name: "SPEC_TAC"
+  parameter_types: TERM
+  parameter_types: TERM
+}
+tactics {
+  id: 37
+  name: "LABEL_TAC"
+  parameter_types: UNKNOWN  # string
+  parameter_types: THEOREM
+}
+tactics {
+  id: 38
+  name: "ONCE_REWRITE_TAC"
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 39
+  name: "GEN_REWRITE_TAC"
+  parameter_types: UNKNOWN  # (conv conv)
+  parameter_types: THEOREM_LIST
+}
+tactics {
+  id: 40
+  name: "TRANS_TAC"
+  parameter_types: THEOREM
+  parameter_types: TERM
+}

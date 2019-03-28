@@ -1,0 +1,12 @@
+theorems {
+  name: "EQ_REFL"
+  conclusion: "(a (c (fun (fun A (bool)) (bool)) !) (l (v A x) (a (a (c (fun A (fun A (bool))) =) (v A x)) (v A x))))"
+  training_split: TESTING
+  tag: THEOREM
+}
+theorems {
+  name: "EQ_SYM"
+  conclusion: "(a (c (fun (fun A (bool)) (bool)) !) (l (v A x) (a (c (fun (fun A (bool)) (bool)) !) (l (v A y) (a (a (c (fun (bool) (fun (bool) (bool))) ==>) (a (a (c (fun A (fun A (bool))) =) (v A x)) (v A y))) (a (a (c (fun A (fun A (bool))) =) (v A y)) (v A x)))))))"
+  training_split: TESTING
+  tag: THEOREM
+}

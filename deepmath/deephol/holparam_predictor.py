@@ -100,10 +100,11 @@ class HolparamPredictor(predictions.Predictions):
 
   def _batch_goal_embedding(self, goals: List[Text]) -> List[GOAL_EMB_TYPE]:
     """From a list of string goals, compute and return their embeddings."""
-    # The checkpoint should have exactly one value in this collection.
-    [embeddings] = self._sess.run(
+    # Get the first goal_net collection (second entry may be duplicated to align
+    # with negative theorems)
+    embeddings = self._sess.run(
         fetches=self._graph.get_collection('goal_net'),
-        feed_dict={self._graph.get_collection('goal_string')[0]: goals})
+        feed_dict={self._graph.get_collection('goal_string')[0]: goals})[0]
     return embeddings
 
   def _batch_thm_embedding(self, thms: List[Text]) -> List[THM_EMB_TYPE]:
@@ -170,7 +171,7 @@ class HolparamPredictor(predictions.Predictions):
     del tactic_id  # tactic id not use to predict theorem scores.
     # The checkpoint should have only one value in this collection.
     feed_dict = {
-        self._graph.get_collection('goal_net')[0]: state_encodings,
+        self._graph.get_collection('goal_net')[-1]: state_encodings,
         self._graph.get_collection('thm_net')[0]: thm_embeddings
     }
     if self._training_meta:
@@ -214,7 +215,7 @@ class TacDependentPredictor(HolparamPredictor):
     tactic_ids = np.tile(tactic_id, [len(state_encodings)])
     # The checkpoint should have only one value in this collection.
     feed_dict = {
-        self._graph.get_collection('goal_net')[0]: state_encodings,
+        self._graph.get_collection('goal_net')[-1]: state_encodings,
         self._graph.get_collection('thm_net')[0]: thm_embeddings,
         self._graph.get_collection('label_tac_id')[0]: tactic_ids
     }

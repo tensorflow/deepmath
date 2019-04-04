@@ -15,7 +15,9 @@ ENV \
 #  sed -i -e 's/git@github.com:/https:\/\/github.com\//' .gitmodules &&\
 #  git submodule update --init
 COPY . deepmath/
-RUN cd deepmath && git submodule update --init --depth 1
+RUN cd deepmath &&\
+  sed -i -e 's/git@github.com:/https:\/\/github.com\//' .gitmodules &&\
+  git submodule update --init
 
 # Build tensorflow.
 RUN cd deepmath/tensorflow &&\

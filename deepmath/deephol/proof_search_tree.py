@@ -30,6 +30,7 @@ import time
 
 import tensorflow as tf
 from typing import List, Optional, Tuple, Text
+from deepmath.deephol.public import proof_assistant
 from deepmath.deephol import deephol_pb2
 from deepmath.deephol import theorem_fingerprint
 from deepmath.proof_assistant import proof_assistant_pb2
@@ -107,7 +108,7 @@ class ProofSearchTree(object):
        purposes).
     - A map of theorems to nodes in order to allow subgoal-sharing. It is
       unclear if this ever happens.
-    - A pointer to the wrapper for the HolLight instance.
+    - A pointer to the wrapper for the proof assistant.
     - A current index to iterate through the search tree in a BFS manner.
   """
 
@@ -145,18 +146,19 @@ class ProofSearchTree(object):
       self.nodes.append(node)
       return node
 
-  def __init__(self, hol_wrapper, goal: proof_assistant_pb2.Theorem):
+  def __init__(self, proof_assistant_obj: proof_assistant.ProofAssistant,
+               goal: proof_assistant_pb2.Theorem):
     """Constructor for a proof search tree.
 
     Args:
-      hol_wrapper: An interface to the proof assistant.
+      proof_assistant_obj: An interface to the proof assistant.
       goal: The root goal which is also used to limit the premise selection to
         preceding theorems. This is the first theorem in the theorem database
         that is not allowed to be used in the proof. For now, it is mandatory
         that the goal is in the theorem database. Later, we should relax this
         constraint.
     """
-    self.hol_wrapper = hol_wrapper
+    self.proof_assistant = proof_assistant_obj
     self.nodes = []
     self.nodes_map = {}
     root = self.add_node(goal, None)
@@ -235,7 +237,7 @@ class TacticApplication(object):
     self.rank = len(failed_attempts) + len(successful_attempts)
     start_time = time.time()
     try:
-      response = tree.hol_wrapper.ApplyTacticToGoal(request)
+      response = tree.proof_assistant.ApplyTactic(request)
       elapsed_msecs = int((time.time() - start_time) * 1000.0 + 0.5)
       self.time_spent = elapsed_msecs
     except error.StatusNotOk as exception:

@@ -9,7 +9,7 @@ import time
 import tensorflow as tf
 from typing import Optional, Text
 from google.protobuf import text_format
-from deepmath.deephol.public import hol_light
+from deepmath.deephol.public import proof_assistant
 from deepmath.deephol import action_generator
 from deepmath.deephol import deephol_pb2
 from deepmath.deephol import embedding_store
@@ -129,8 +129,8 @@ class Prover(object):
       tf.logging.fatal('Only one goal per task is supported')
     return self.prove_one_wrapper(task)
 
-  def prove_one_wrapper(
-      self, task: proof_assistant_pb2.ProverTask) -> deephol_pb2.ProofLog:
+  def prove_one_wrapper(self, task: proof_assistant_pb2.ProverTask
+                       ) -> deephol_pb2.ProofLog:
     """Wrapper of prove_one methods for single goal use cases.
 
     This wrapper handles, timeout, error management and can set the prover
@@ -293,8 +293,8 @@ class BFSProver(Prover):
       return 'BFS: Node limit reached.'
 
 
-def get_predictor(
-    options: deephol_pb2.ProverOptions) -> predictions.Predictions:
+def get_predictor(options: deephol_pb2.ProverOptions
+                 ) -> predictions.Predictions:
   """Returns appropriate predictor based on prover options."""
   model_arch = options.model_architecture
   if model_arch == deephol_pb2.ProverOptions.PAIR_DEFAULT:
@@ -310,8 +310,8 @@ def get_predictor(
         'History-dependent model %s is not supported in the prover.' %
         model_arch)
 
-  raise AttributeError(
-      'Unknown model architecture in prover options: %s' % model_arch)
+  raise AttributeError('Unknown model architecture in prover options: %s' %
+                       model_arch)
 
 
 def cache_embeddings(options: deephol_pb2.ProverOptions):
@@ -354,8 +354,8 @@ def create_prover(options: deephol_pb2.ProverOptions) -> Prover:
 
 def setup_prover(theorem_database: proof_assistant_pb2.TheoremDatabase):
   """Starts up HOL and seeds it with given TheoremDatabase."""
-  hol_wrapper = hol_light.HolLight()
+  proof_assistant_obj = proof_assistant.ProofAssistant()
   for thm in theorem_database.theorems:
-    hol_wrapper.RegisterTheorem(
+    proof_assistant_obj.RegisterTheorem(
         proof_assistant_pb2.RegisterTheoremRequest(theorem=thm))
-  return hol_wrapper
+  return proof_assistant_obj

@@ -12,7 +12,7 @@ from __future__ import print_function
 import time
 import tensorflow as tf
 from typing import List, Text
-from deepmath.deephol.public import hol_light
+from deepmath.deephol.public import proof_assistant
 from deepmath.deephol import deephol_pb2
 from deepmath.deephol import prover_util
 from deepmath.proof_assistant import proof_assistant_pb2
@@ -48,7 +48,7 @@ class ParameterPruning(object):
           'theorem_db provided will be ignored as hol_wrapper provided.')
     self.hol_wrapper = hol_wrapper
     if not self.hol_wrapper:
-      self.hol_wrapper = hol_light.HolLight()
+      self.hol_wrapper = proof_assistant.ProofAssistant()
       for theorem in theorem_db.theorems:
         self.hol_wrapper.RegisterTheorem(
             proof_assistant_pb2.RegisterTheoremRequest(theorem=theorem))
@@ -88,7 +88,7 @@ class ParameterPruning(object):
       start_time = time.time()
       response = proof_assistant_pb2.ApplyTacticResponse()
       try:
-        response = self.hol_wrapper.ApplyTacticToGoal(request)
+        response = self.hol_wrapper.ApplyTactic(request)
         elapsed_msecs = int((time.time() - start_time) * 1000.0 + 0.5)
         time_spent = elapsed_msecs
       except error.StatusNotOk as exception:

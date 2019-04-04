@@ -43,10 +43,10 @@ def load_tactics(filename) -> List[deephol_pb2.Tactic]:
   return tactics_info.tactics
 
 
-class MockHolLightWrapper(object):
+class MockProofAssistantWrapper(object):
 
   # We need to conform to the existing API naming.
-  def ApplyTacticToGoal(self, request):  # pylint: disable=invalid-name
+  def ApplyTactic(self, request):  # pylint: disable=invalid-name
     response = proof_assistant_pb2.ApplyTacticResponse()
     tactic = str(request.tactic)
     head = tactic[0]
@@ -81,7 +81,7 @@ def mock_generator(*tactic_scores):
   ])
 
 
-MOCK_WRAPPER = MockHolLightWrapper()
+MOCK_WRAPPER = MockProofAssistantWrapper()
 MOCK_THEOREM = proof_assistant_pb2.Theorem(
     name='TH1',
     hypotheses=['h'],
@@ -121,9 +121,10 @@ class ActionGeneratorTest(parameterized.TestCase):
     tactics on which the test model was trained.
     """
     hollight_tactics = load_tactics(HOLLIGHT_TACTICS_TEXTPB_PATH)
-    action_gen = action_generator.ActionGenerator(
-        self.theorem_database, hollight_tactics, self.predictor, self.options,
-        self.model_architecture)
+    action_gen = action_generator.ActionGenerator(self.theorem_database,
+                                                  hollight_tactics,
+                                                  self.predictor, self.options,
+                                                  self.model_architecture)
     actions_with_scores = action_gen.step(self.node, self.test_premise_set)
     for action, score in sorted(actions_with_scores, key=lambda x: x.score):
       tf.logging.info(str(score) + ': ' + str(action))
@@ -131,9 +132,10 @@ class ActionGeneratorTest(parameterized.TestCase):
 
   def test_action_generator_no_parameter_tactic(self):
     no_param_tactic = deephol_pb2.Tactic(name='TAC')
-    action_gen = action_generator.ActionGenerator(
-        self.theorem_database, [no_param_tactic], self.predictor, self.options,
-        self.model_architecture)
+    action_gen = action_generator.ActionGenerator(self.theorem_database,
+                                                  [no_param_tactic],
+                                                  self.predictor, self.options,
+                                                  self.model_architecture)
     actions_scores = action_gen.step(self.node, self.test_premise_set)
     self.assertEqual(1, len(actions_scores))
     self.assertEqual(actions_scores[0].string, 'TAC')
@@ -141,18 +143,20 @@ class ActionGeneratorTest(parameterized.TestCase):
   def test_action_generator_unknown_parameter_tactic(self):
     unknown_param_tactic = deephol_pb2.Tactic(
         name='TAC', parameter_types=[deephol_pb2.Tactic.UNKNOWN])
-    action_gen = action_generator.ActionGenerator(
-        self.theorem_database, [unknown_param_tactic], self.predictor,
-        self.options, self.model_architecture)
+    action_gen = action_generator.ActionGenerator(self.theorem_database,
+                                                  [unknown_param_tactic],
+                                                  self.predictor, self.options,
+                                                  self.model_architecture)
     actions_scores = action_gen.step(self.node, self.test_premise_set)
     self.assertEqual(0, len(actions_scores))
 
   def test_action_generator_theorem_parameter_tactic(self):
     thm_param_tactic = deephol_pb2.Tactic(
         name='TAC', parameter_types=[deephol_pb2.Tactic.THEOREM])
-    action_gen = action_generator.ActionGenerator(
-        self.theorem_database, [thm_param_tactic], self.predictor, self.options,
-        self.model_architecture)
+    action_gen = action_generator.ActionGenerator(self.theorem_database,
+                                                  [thm_param_tactic],
+                                                  self.predictor, self.options,
+                                                  self.model_architecture)
     actions_scores = action_gen.step(self.node, self.test_premise_set)
     self.assertEqual(1, len(actions_scores))
     expected = 'TAC ' + theorem_fingerprint.ToTacticArgument(
@@ -181,9 +185,11 @@ class ActionGeneratorTest(parameterized.TestCase):
     if use_embedding_store:
       emb_store = embedding_store.TheoremEmbeddingStore(self.predictor)
       emb_store.compute_embeddings_for_thms_from_db(theorem_database)
-    action_gen = action_generator.ActionGenerator(
-        theorem_database, [thmlist_param_tactic], self.predictor, self.options,
-        self.model_architecture, emb_store)
+    action_gen = action_generator.ActionGenerator(theorem_database,
+                                                  [thmlist_param_tactic],
+                                                  self.predictor, self.options,
+                                                  self.model_architecture,
+                                                  emb_store)
     test_theorem = theorem_database.theorems[2 * max_parameters]
     actions_scores = action_gen.step(
         self.node, prover_util.make_premise_set(test_theorem, 'default'))

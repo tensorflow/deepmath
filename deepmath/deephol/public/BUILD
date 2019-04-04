@@ -13,7 +13,10 @@ py_library(
 )
 
 py_library(
-    name = "hol_light",
-    srcs = ["hol_light.py"],
-    deps = ["//deepmath/proof_assistant:proof_assistant_proto_py"],
+    name = "proof_assistant",
+    srcs = ["proof_assistant.py"],
+    deps = [
+        "//deepmath/proof_assistant:proof_assistant_proto_py",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
 )

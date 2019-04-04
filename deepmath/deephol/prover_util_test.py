@@ -15,7 +15,7 @@ from deepmath.proof_assistant import proof_assistant_pb2
 class MockHolLightWrapper(object):
 
   # We need to conform to the existing API naming.
-  def ApplyTacticToGoal(self, request):  # pylint: disable=invalid-name
+  def ApplyTactic(self, request):  # pylint: disable=invalid-name
     response = proof_assistant_pb2.ApplyTacticResponse()
     tactic = str(request.tactic)
     head = tactic[0]
@@ -82,30 +82,29 @@ class ProverUtilTest(tf.test.TestCase):
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='axy')
     self.assertEqual([
         str(goal.conclusion)
-        for goal in tree.hol_wrapper.ApplyTacticToGoal(request).goals.goals
+        for goal in tree.proof_assistant.ApplyTactic(request).goals.goals
     ], ['gxy'])
     request = proof_assistant_pb2.ApplyTacticRequest(
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='rxy')
     self.assertEqual([
         str(goal.conclusion)
-        for goal in tree.hol_wrapper.ApplyTacticToGoal(request).goals.goals
+        for goal in tree.proof_assistant.ApplyTactic(request).goals.goals
     ], ['xy'])
     request = proof_assistant_pb2.ApplyTacticRequest(
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='bxy')
     self.assertEqual([
         str(goal.conclusion)
-        for goal in tree.hol_wrapper.ApplyTacticToGoal(request).goals.goals
+        for goal in tree.proof_assistant.ApplyTactic(request).goals.goals
     ], ['gx', 'gy'])
     request = proof_assistant_pb2.ApplyTacticRequest(
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='c')
     self.assertEqual([
         str(goal.conclusion)
-        for goal in tree.hol_wrapper.ApplyTacticToGoal(request).goals.goals
+        for goal in tree.proof_assistant.ApplyTactic(request).goals.goals
     ], [])
     request = proof_assistant_pb2.ApplyTacticRequest(
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='err')
-    self.assertEqual(
-        str(tree.hol_wrapper.ApplyTacticToGoal(request).error), 'rr')
+    self.assertEqual(str(tree.proof_assistant.ApplyTactic(request).error), 'rr')
 
   def check_log_consistency(self):
     tree = self.tree

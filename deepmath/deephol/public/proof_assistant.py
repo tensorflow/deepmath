@@ -1,26 +1,30 @@
-"""HOL-light python API via gRPC.
-
-This is the python API to communicate with a HOL-light server via gRPC.
-"""
+"""A python client interface for ProofAssistantService."""
 
 from __future__ import absolute_import
 from __future__ import division
 # Import Type Annotations
 from __future__ import print_function
 import grpc
+import tensorflow as tf
 from deepmath.proof_assistant import proof_assistant_pb2
 from deepmath.proof_assistant import proof_assistant_pb2_grpc
 
+tf.flags.DEFINE_string(
+    'proof_assistant_server_address', 'localhost:2000',
+    'address (including port) of the proof assistant server')
 
-class HolLight(object):
-  """Class for intefacing a HOL Light prover."""
+FLAGS = tf.flags.FLAGS
+
+
+class ProofAssistant(object):
+  """Class for intefacing a proof assistant."""
 
   def __init__(self):
-    self.channel = grpc.insecure_channel('localhost:50051')
+    self.channel = grpc.insecure_channel(FLAGS.proof_assistant_server_address)
     self.stub = proof_assistant_pb2_grpc.ProofAssistantServiceStub(self.channel)
 
-  def ApplyTacticToGoal(self, request: proof_assistant_pb2.ApplyTacticRequest
-                       ) -> proof_assistant_pb2.ApplyTacticResponse:
+  def ApplyTactic(self, request: proof_assistant_pb2.ApplyTacticRequest
+                 ) -> proof_assistant_pb2.ApplyTacticResponse:
     return self.stub.ApplyTactic(request)
 
   def VerifyProof(self, request: proof_assistant_pb2.VerifyProofRequest

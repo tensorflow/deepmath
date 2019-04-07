@@ -37,8 +37,5 @@ RUN cd deepmath/tensorflow &&\
 RUN cd deepmath &&\
   bazel build -c opt //deepmath/deephol:main --define grpc_no_ares=true --python_path=/usr/bin/python3
 
-# Run deephol:main.
-ENTRYPOINT /home/deepmath/bazel-bin/deepmath/deephol/main\
-  --prover_options=/tmp/example/prover_options.txt\
-  --output=/tmp/prooflog.txt\
-  --proof_assistant_server_address=hol-light:2000
+# Set deephol:main as entrypoint.
+ENTRYPOINT ["/home/deepmath/bazel-bin/deepmath/deephol/main"]

@@ -10,7 +10,7 @@ from __future__ import division
 from __future__ import print_function
 import time
 import tensorflow as tf
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List, Optional, Text
 from google.protobuf import text_format
 from deepmath.deephol import action_generator
 from deepmath.deephol import deephol_pb2
@@ -427,6 +427,7 @@ class ProverTaskGenerator(object):
 
 def get_task_list(prover_tasks_file: Optional[str],
                   prover_task_list_file: Optional[str],
+                  tasks_by_fingerprint: Optional[Text],
                   theorem_db: Optional[proof_assistant_pb2.TheoremDatabase],
                   splits, library_tags) -> List[proof_assistant_pb2.ProverTask]:
   """Get a list of theorem from either sources.
@@ -438,6 +439,8 @@ def get_task_list(prover_tasks_file: Optional[str],
     prover_tasks_file: File name for a text file with multiple ProverTasks in
       each line or a recordio file depending on the extension.
     prover_task_list_file: File name for a text protobuf prover_tasks_file.
+    tasks_by_fingerprint: Comma-separated list of fingerprints from the theorem
+      database to generate a prover task for.
     theorem_db: TheoremDatabase object.
     splits: List of splits to be considered. The list will be filtered for the
       splits that are not specified.
@@ -463,6 +466,25 @@ def get_task_list(prover_tasks_file: Optional[str],
     return [
         task for task in task_list.tasks
         if is_thm_included(task.goals[0], splits, library_tags)
+    ]
+  elif tasks_by_fingerprint:
+    if not theorem_db:
+      tf.logging.fatal('Require a theorem database to create prover tasks from '
+                       'fingerprints.')
+    tf.logging.info('Generating task list for fingerprint(s) %s',
+                    tasks_by_fingerprint)
+    fingerprints = set([int(fp) for fp in tasks_by_fingerprint.split(',')])
+    theorems = []
+    for thm in theorem_db.theorems:
+      fingerprint = theorem_fingerprint.Fingerprint(thm)
+      if fingerprint in fingerprints:
+        fingerprints.remove(fingerprint)
+        theorems.append(thm)
+    if fingerprints:
+      tf.logging.error('Some fingerprints could not be found in theorem db: %s',
+                       str(fingerprints))
+    return [
+        make_prover_task_for_goal(thm, thm, theorem_db.name) for thm in theorems
     ]
   else:
     tf.logging.info('Generating task list for theorem database.')

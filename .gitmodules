@@ -1,6 +1,6 @@
 [submodule "tensorflow"]
 	path = tensorflow
-	url = git@github.com:tensorflow/tensorflow.git
+	url = https://github.com/tensorflow/tensorflow.git
 [submodule "fold"]
 	path = fold
-	url = git@github.com:tensorflow/fold.git
+	url = https://github.com/tensorflow/fold.git

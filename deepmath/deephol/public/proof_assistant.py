@@ -15,12 +15,18 @@ tf.flags.DEFINE_string(
 
 FLAGS = tf.flags.FLAGS
 
+GIGABYTE = 1024 * 1024 * 1024
+GRPC_MAX_MESSAGE_LENGTH = GIGABYTE
+
 
 class ProofAssistant(object):
   """Class for intefacing a proof assistant."""
 
   def __init__(self):
-    self.channel = grpc.insecure_channel(FLAGS.proof_assistant_server_address)
+    self.channel = grpc.insecure_channel(
+        FLAGS.proof_assistant_server_address,
+        options=[('grpc.max_send_message_length', GRPC_MAX_MESSAGE_LENGTH),
+                 ('grpc.max_receive_message_length', GRPC_MAX_MESSAGE_LENGTH)])
     self.stub = proof_assistant_pb2_grpc.ProofAssistantServiceStub(self.channel)
 
   def ApplyTactic(self, request: proof_assistant_pb2.ApplyTacticRequest

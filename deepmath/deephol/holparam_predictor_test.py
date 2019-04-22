@@ -35,12 +35,10 @@ class HolparamPredictorTest(tf.test.TestCase, parameterized.TestCase):
   def setUpClass(cls):
     """Restoring the graph takes a lot of time, so we do it only once here."""
     cls.default_ckpt = test_util.test_src_dir_path(DEFAULT_TEST_PATH)
-    print(cls.default_ckpt)
     cls.default_predictions = holparam_predictor.HolparamPredictor(
         cls.default_ckpt)
 
     cls.tac_dep_ckpt = test_util.test_src_dir_path(TAC_DEP_TEST_PATH)
-    print(cls.tac_dep_ckpt)
     cls.tac_dep_predictions = holparam_predictor.TacDependentPredictor(
         cls.tac_dep_ckpt)
 

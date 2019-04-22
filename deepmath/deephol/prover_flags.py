@@ -36,10 +36,15 @@ tf.flags.DEFINE_string(
 tf.flags.DEFINE_string(
     'tasks', None,
     'Optional multi-line ProverTask text protobuf or recordio to specify the '
-    'theorem proving tasks. Either this or task list must be specified, '
-    'otherwise the tasks are generated automatically from the theorem library. '
-    'The filtering for training_split is in effect for the goals in the read '
-    'tasks as well.')
+    'theorem proving tasks. Either this or task list or tasks_by_fingerprint '
+    'must be specified, otherwise the tasks are generated automatically from '
+    'the theorem library. The filtering for training_split is in effect for '
+    'the goals in the read tasks as well.')
+
+tf.flags.DEFINE_string(
+    'tasks_by_fingerprint', None,
+    'Optional comma-separated list of fingerprints of theorems in the theorem '
+    'database. No filtering by training_split in place.')
 
 tf.flags.DEFINE_string(
     'splits', None,
@@ -143,7 +148,7 @@ def process_prover_flags():
     splits_to_prove = prover_util.translate_splits(FLAGS.splits)
   else:
     splits_to_prove = list(prover_options.splits_to_prove)
-  if not splits_to_prove:
+  if not splits_to_prove and not FLAGS.tasks_by_fingerprint:
     tf.logging.fatal('No split specification!')
   tf.logging.info(
       'Splits to prove: %s', ', '.join(
@@ -176,8 +181,10 @@ def process_prover_flags():
                        theorem_db.name)
   if FLAGS.task_list and FLAGS.tasks:
     tf.logging.fatal('Only one of --tasks or --task_list is allowed.')
-  prover_tasks = prover_util.get_task_list(
-      FLAGS.tasks, FLAGS.task_list, theorem_db, splits_to_prove, library_tags)
+  prover_tasks = prover_util.get_task_list(FLAGS.tasks, FLAGS.task_list,
+                                           FLAGS.tasks_by_fingerprint,
+                                           theorem_db, splits_to_prove,
+                                           library_tags)
   # TODO(szegedy): Verify tasks that they all fit the theorem database(s)
   tf.logging.info('Number of prover tasks: %d', len(prover_tasks))
   return (prover_tasks, prover_options, FLAGS.output)

@@ -354,8 +354,10 @@ def create_prover(options: deephol_pb2.ProverOptions) -> Prover:
 
 def setup_prover(theorem_database: proof_assistant_pb2.TheoremDatabase):
   """Starts up HOL and seeds it with given TheoremDatabase."""
+  tf.logging.info('Setting up and registering theorems with proof assistant...')
   proof_assistant_obj = proof_assistant.ProofAssistant()
   for thm in theorem_database.theorems:
     proof_assistant_obj.RegisterTheorem(
         proof_assistant_pb2.RegisterTheoremRequest(theorem=thm))
+  tf.logging.info('Proof assistant setup done.')
   return proof_assistant_obj

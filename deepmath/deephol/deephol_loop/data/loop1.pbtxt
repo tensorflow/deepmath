@@ -1,0 +1,17 @@
+# A DeepHOL LoopConfig example.
+name: 'loop1'
+num_prover_tasks_per_round: 1000
+path_model_directory: '/data/models/loop1_model'
+prover_options: {
+  path_tactics: '/data/deephol/example/hollight_tactics.textpb'
+  path_tactics_replace: '/data/deephol/example/hollight_tactics_replacements_nogen.textpb'
+  path_theorem_database: '/data/deephol/theorem_database_v1.0.textpb'
+  prover: 'bfs'
+  splits_to_prove: TRAINING
+  bfs_options: {
+    max_top_suggestions: 20
+    max_successful_branches: 5
+    max_explored_nodes: 100
+  }
+  timeout_seconds: 100.0
+}

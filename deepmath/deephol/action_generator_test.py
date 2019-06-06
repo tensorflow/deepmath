@@ -197,29 +197,24 @@ class ActionGeneratorTest(parameterized.TestCase):
     self.assertEqual(max_parameters, actions_scores[-1].string.count('THM'))
 
   @parameterized.named_parameters(
-      ('EMPTY', [], [''], -float('inf')),
-      ('THEOREM', [deephol_pb2.Tactic.THEOREM], [' THM1'], -float('inf')),
-      ('THEOREM_LIST', [deephol_pb2.Tactic.THEOREM_LIST],
-       [' [ THM1 ; THM2 ; THM3 ]'], -float('inf')),
-      ('EMPTY_THEOREM_LIST', [deephol_pb2.Tactic.THEOREM_LIST],
-       [' [ ]', ' [ THM1 ; THM2 ; THM3 ]'], -9))
+      ('EMPTY', [], [''], False),
+      ('THEOREM', [deephol_pb2.Tactic.THEOREM], [' THM1'], False),
+      ('THEOREM_LIST', [deephol_pb2.Tactic.THEOREM_LIST
+                       ], [' [ THM1 ; THM2 ; THM3 ]'], False),
+      ('EMPTY_THEOREM_LIST', [deephol_pb2.Tactic.THEOREM_LIST
+                             ], [' [ ]', ' [ THM1 ; THM2 ; THM3 ]'], True))
   def test_compute_parameter_string(self, types, expected_params,
-                                    no_params_score):
-    thm_scores = [-10, 10, 1]
-    thm_strings = ['THM3', 'THM1', 'THM2']
-
+                                    pass_no_arguments):
     actual_params = action_generator._compute_parameter_string(
         types=types,
-        no_params_score=no_params_score,
-        thm_scores=thm_scores,
-        thm_strings=thm_strings,
-        max_theorem_parameters=16)
+        pass_no_arguments=pass_no_arguments,
+        thm_ranked=[(10, 'THM1'), (1, 'THM2'), (-10, 'THM3')])
     self.assertSameElements(expected_params, actual_params)
 
   def test_compute_parameter_string_unknown(self):
     types = [deephol_pb2.Tactic.UNKNOWN]
     self.assertRaises(ValueError, action_generator._compute_parameter_string,
-                      types, 0, [1], [' THM1'], 16)
+                      types, False, [(1, ' THM1')])
 
 
 if __name__ == '__main__':

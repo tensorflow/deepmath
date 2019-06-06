@@ -9,6 +9,7 @@ import time
 import tensorflow as tf
 from typing import Optional, Text
 from google.protobuf import text_format
+# Import predictors.
 from deepmath.deephol.public import proof_assistant
 from deepmath.deephol import action_generator
 from deepmath.deephol import deephol_pb2
@@ -21,7 +22,6 @@ from deepmath.deephol import prover_util
 from deepmath.deephol import prune_lib
 from deepmath.proof_assistant import proof_assistant_pb2
 from deepmath.public import error
-
 # Max number of tactics to attempt to apply per NoBacktrack proofs.
 NO_BACKTRACK_SEARCH_NODES = 45
 
@@ -217,7 +217,8 @@ class NoBacktrackProver(Prover):
       node = tree.nodes[cur_index]
       cur_index += 1
       prover_util.try_tactics(node, budget, 0, 1, task.premise_set,
-                              self.action_gen)
+                              self.action_gen,
+                              self.prover_options.tactic_timeout_ms)
       if not node.successful_attempts:
         return ('NoBacktrack: No successful tactic applications within '
                 'limit %d' % budget)
@@ -279,7 +280,8 @@ class BFSProver(Prover):
       prover_util.try_tactics(node, self.options.max_top_suggestions,
                               self.options.min_successful_branches,
                               self.options.max_successful_branches,
-                              task.premise_set, self.action_gen)
+                              task.premise_set, self.action_gen,
+                              self.prover_options.tactic_timeout_ms)
     root_status = ' '.join([
         p[0] for p in [('closed', root.closed), ('failed', root.failed)] if p[1]
     ])
@@ -299,9 +301,11 @@ def get_predictor(options: deephol_pb2.ProverOptions
   model_arch = options.model_architecture
   if model_arch == deephol_pb2.ProverOptions.PAIR_DEFAULT:
     return holparam_predictor.HolparamPredictor(str(options.path_model_prefix))
-
   if model_arch == deephol_pb2.ProverOptions.PARAMETERS_CONDITIONED_ON_TAC:
     return holparam_predictor.TacDependentPredictor(
+        str(options.path_model_prefix))
+  if model_arch == deephol_pb2.ProverOptions.GNN_GOAL:
+    raise NotImplementedError('GNN_GOAL not implemented for %s' %
         str(options.path_model_prefix))
   if (model_arch == deephol_pb2.ProverOptions.HIST_AVG or
       model_arch == deephol_pb2.ProverOptions.HIST_CONV or
@@ -357,7 +361,10 @@ def setup_prover(theorem_database: proof_assistant_pb2.TheoremDatabase):
   tf.logging.info('Setting up and registering theorems with proof assistant...')
   proof_assistant_obj = proof_assistant.ProofAssistant()
   for thm in theorem_database.theorems:
-    proof_assistant_obj.RegisterTheorem(
+    response = proof_assistant_obj.RegisterTheorem(
         proof_assistant_pb2.RegisterTheoremRequest(theorem=thm))
+    if response.HasField('error_msg') and response.error_msg:
+      tf.logging.fatal('Registration failed for %d with: %s' %
+                       (response.fingerprint, response.error_msg))
   tf.logging.info('Proof assistant setup done.')
   return proof_assistant_obj

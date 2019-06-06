@@ -18,26 +18,24 @@ from deepmath.deephol.public import recordio_util
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
-def _process_tactics_and_replacements(
-    tactics_info: deephol_pb2.TacticsInfo,
-    replacements: deephol_pb2.TacticsInfo) -> List[deephol_pb2.Tactic]:
+def _process_tactics_and_replacements(tactics_info: deephol_pb2.TacticsInfo,
+                                      replacements: deephol_pb2.TacticsInfo
+                                     ) -> List[deephol_pb2.Tactic]:
   """Check tactics are in order, have no gap in id, and apply replacements."""
   bad_ids = [(i, tactic.id)
              for i, tactic in enumerate(tactics_info.tactics)
              if tactic.id != i]
   if bad_ids:
-    raise ValueError(' '.join(
-        'Tactic #%d should not have id %d.' % (i, tactic_id)
-        for i, tactic_id in bad_ids))
+    raise ValueError(' '.join('Tactic #%d should not have id %d.' %
+                              (i, tactic_id) for i, tactic_id in bad_ids))
   bad_replacement_ids = [
       replacement.id
       for replacement in replacements.tactics
       if replacement.id < 0 or replacement.id >= len(tactics_info.tactics)
   ]
   if bad_replacement_ids:
-    raise ValueError(' '.join(
-        'Replacement tactic id=%d out of bounds.' % tactic_id
-        for tactic_id in bad_replacement_ids))
+    raise ValueError(' '.join('Replacement tactic id=%d out of bounds.' %
+                              tactic_id for tactic_id in bad_replacement_ids))
   for replacement in replacements.tactics:
     tactics_info.tactics[replacement.id].CopyFrom(replacement)
   return list(tactics_info.tactics)
@@ -109,9 +107,9 @@ def write_protos(filename: Text, protos, text_output=True):
     recordio_util.write_protos_to_recordio(filename, protos)
 
 
-def load_tactics_from_file(
-    tactics_filename: Text,
-    tactics_replacement_filename: Optional[Text]) -> List[deephol_pb2.Tactic]:
+def load_tactics_from_file(tactics_filename: Text,
+                           tactics_replacement_filename: Optional[Text]
+                          ) -> List[deephol_pb2.Tactic]:
   """Load tactics from file, and (optional) apply replacements."""
   tactics_info = load_text_proto(tactics_filename, deephol_pb2.TacticsInfo,
                                  'tactics')
@@ -124,12 +122,19 @@ def load_tactics_from_file(
   return _process_tactics_and_replacements(tactics_info, replacements)
 
 
-def load_theorem_database_from_file(
-    filename: Text) -> proof_assistant_pb2.TheoremDatabase:
+def load_theorem_database_from_file(filename: Text
+                                   ) -> proof_assistant_pb2.TheoremDatabase:
   """Load a theorem database from a text protobuf file."""
   theorem_database = proof_assistant_pb2.TheoremDatabase()
-  with tf.gfile.Open(filename) as f:
-    text_format.MergeLines(f, theorem_database)
+  if filename.endswith('.recordio'):
+    theorem_database = [
+        x for x in recordio_util.read_protos_from_recordio(
+            filename, proof_assistant_pb2.TheoremDatabase)
+    ]
+    theorem_database = theorem_database[0]
+  else:
+    with tf.gfile.Open(filename) as f:
+      text_format.MergeLines(f, theorem_database)
   tf.logging.info('Successfully read theorem database from %s (%d theorems).',
                   filename, len(theorem_database.theorems))
   return theorem_database
@@ -175,7 +180,8 @@ def read_protos(pattern: Text, proto_class):
   if match:
     for proto in recordio_util.read_protos_from_recordio(pattern, proto_class):
       yield proto
-  filenames = tf.gfile.Glob(pattern)
+    return
+  filenames = tf.io.gfile.glob(pattern)
   if not filenames:
     raise ValueError('read_protos: No files found matching %s' % pattern)
   for filename in filenames:

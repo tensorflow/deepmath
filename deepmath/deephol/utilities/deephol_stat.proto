@@ -1,0 +1,121 @@
+syntax = "proto2";
+
+package deepmath_deephol;
+
+import "deepmath/deephol/deephol.proto";
+
+message LogScaleHistogram {
+  map<int32, int32> h = 1;
+}
+
+// Format for statistics for individual proofs.
+// In case of single-proof, the num_theorems_attempted will be 1 and
+// theorem_fingerprint should be set to the goal theorem fingerprint.
+message ProofStat {
+  // Number of theorems attempted.
+  optional int32 num_theorems_attempted = 1;
+  // Number of theorems (claimed to be) proved among the attempted ones.
+  optional int32 num_theorems_proved = 2;
+  // Number of theorems claimed to be proved but did not check.
+  optional int32 num_theorems_with_bad_proof = 3;
+  // Number of overall proof-search nodes used.
+  optional int64 num_nodes = 4;
+  // A minimal set of nodes sufficient for proving all the closed theorems.
+  repeated int32 reduced_node_indices = 5;
+  // A set of proved nodes that were used produced during proof search.
+  repeated int32 closed_node_indices = 6;
+  // The time spent in proof search.
+  optional uint64 time_spent_milliseconds = 7;
+  // If this is the statistics over an individual theorem, then the
+  // fingerprint for the theorem to which these statistics belong.
+  optional uint64 theorem_fingerprint = 8;
+
+  // TacticApplicationStat-level statistics
+  optional TacticApplicationStat tapp_stat = 9;
+
+  optional int64 total_prediction_time = 10 [default = 0];
+  optional LogScaleHistogram node_prediction_time_histogram = 11;
+}
+
+// Aggregate statistics about multiple proofs.
+message ProofAggregateStat {
+  // Number of theorems attempted.
+  optional int32 num_theorems_attempted = 1 [default = 0];
+  // Number of theorems (claimed to be) proved among the attempted ones.
+  optional int32 num_theorems_proved = 2 [default = 0];
+  // Number of theorems claimed to be proved but did not check.
+  optional int32 num_theorems_with_bad_proof = 3 [default = 0];
+  // Number of overall proof-search nodes used.
+  optional int64 num_nodes = 4 [default = 0];
+  // Number of nodes sufficient for proving all the closed theorems.
+  optional int64 num_reduced_nodes = 5 [default = 0];
+  // Number of nodes that were used produced and proved during proof search.
+  optional int64 num_closed_nodes = 6 [default = 0];
+  // The time spent in overall proving.
+  optional uint64 time_spent_milliseconds = 7 [default = 0];
+
+  // Proof-level statistics
+  // Maps time to number of proofs taking that time.
+  // Grouped in buckets of exponentially increasing size.
+  optional LogScaleHistogram proof_time_histogram = 9;
+  optional LogScaleHistogram proof_time_histogram_proved = 10;
+  optional LogScaleHistogram proof_time_histogram_failed = 11;
+  // Distribution of num_reduced nodes
+  map<int32, int32> num_reduced_nodes_distribution = 13;
+  // Distribution of prediction times
+  optional int64 total_prediction_time = 14 [default = 0];
+  optional LogScaleHistogram proof_prediction_time_histogram = 15;
+  optional LogScaleHistogram node_prediction_time_histogram = 16;
+
+  // TacticApplication-level statistics
+  optional TacticApplicationStat tapp_stat = 12;
+
+  // Storing the search time for each closed proof; for cactus plots
+  repeated uint64 proof_closed_after_millis = 17;
+}
+
+message TacticTimeStat {
+  optional int64 total_time = 1 [default = 0];
+  optional LogScaleHistogram total_distribution = 2;
+  // Only successful applications of this tactic
+  optional LogScaleHistogram success_distribution = 3;
+  // Only unchanged applications of this tactic
+  optional LogScaleHistogram unchanged_distribution = 4;
+  // Only failed applications of this tactic
+  optional LogScaleHistogram failed_distribution = 5;
+}
+
+message TacticApplicationStat {
+  // Time spent for success/unchanged/error in tactic applications
+  map<string, int64> time_spent_per_tapp_result = 1;
+
+  // per tactic stats
+  map<string, int64> time_spent_per_tactic = 2;
+  map<string, int32> total_tactic_applications_per_tactic = 3;
+  map<string, int32> successful_tactic_applications_per_tactic = 4;
+  map<string, int32> unchanged_tactic_applications_per_tactic = 5;
+  map<string, int32> failed_tactic_applications_per_tactic = 6;
+  map<string, int32> unknown_tactic_applications_per_tactic = 7;
+  map<string, int32> closing_tactic_applications_per_tactic = 8;
+  map<string, int32> closed_applications_per_tactic = 22;
+
+  optional TacticTimeStat meson_stat = 9;
+  optional TacticTimeStat rewrite_stat = 10;
+  optional TacticTimeStat simp_stat = 11;
+
+  // by rank
+  map<int32, int64> time_per_rank = 12;
+  map<int32, int32> total_per_rank = 13;
+  map<int32, int32> success_per_rank = 14;
+  map<int32, int32> failed_per_rank = 15;
+  map<int32, int32> unchanged_per_rank = 16;
+  map<int32, int32> closed_per_rank = 24;
+
+  // by score
+  map<int32, int64> time_per_score = 17;
+  map<int32, int32> total_per_score = 18;
+  map<int32, int32> success_per_score = 19;
+  map<int32, int32> failed_per_score = 20;
+  map<int32, int32> unchanged_per_score = 21;
+  map<int32, int32> closed_per_score = 23;
+}

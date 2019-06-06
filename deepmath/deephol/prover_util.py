@@ -90,9 +90,9 @@ def is_thm_included(thm, splits, library_tags):
       (not library_tags or (set(thm.library_tag) & library_tags)))
 
 
-def create_tasks_for_theorem_db(
-    theorem_db: proof_assistant_pb2.TheoremDatabase, allowed_splits,
-    library_tags) -> List[proof_assistant_pb2.ProverTask]:
+def create_tasks_for_theorem_db(theorem_db: proof_assistant_pb2.TheoremDatabase,
+                                allowed_splits, library_tags
+                               ) -> List[proof_assistant_pb2.ProverTask]:
   """Creates the theorem proving tasks for each theorem in the theorem database.
 
   The tasks will have the premise sets of all the theorems in the database
@@ -116,8 +116,8 @@ def create_tasks_for_theorem_db(
   ]
 
 
-def theorem_to_goal_proto(
-    thm: proof_assistant_pb2.Theorem) -> proof_assistant_pb2.Theorem:
+def theorem_to_goal_proto(thm: proof_assistant_pb2.Theorem
+                         ) -> proof_assistant_pb2.Theorem:
   return proof_assistant_pb2.Theorem(
       tag=proof_assistant_pb2.Theorem.GOAL,
       hypotheses=thm.hypotheses,
@@ -127,7 +127,8 @@ def theorem_to_goal_proto(
 def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
                 min_successes: int, max_successes: int,
                 premise_set: proof_assistant_pb2.PremiseSet,
-                action_gen: action_generator.ActionGenerator) -> int:
+                action_gen: action_generator.ActionGenerator,
+                tactic_timeout_ms: int) -> int:
   """Generate initial proof attempts by applying a set of tactics.
 
   Args:
@@ -141,6 +142,7 @@ def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
     premise_set: A premise set passed to the action generator to select tactic
       arguments from.
     action_gen: Generator for creating and score tactic applications.
+    tactic_timeout_ms: Timeout per-tactic in milliseconds.
 
   Returns:
     The number of successful tactics applications.
@@ -159,7 +161,7 @@ def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
     return 0
   top_suggestions = sorted(suggestion_scores, key=lambda x: x[1], reverse=True)
   request = proof_assistant_pb2.ApplyTacticRequest(
-      goal=theorem_to_goal_proto(node.goal))
+      goal=theorem_to_goal_proto(node.goal), timeout_ms=tactic_timeout_ms)
   tf.logging.info('Attempting to apply tactics: %s', str(top_suggestions))
   node.processed = True
   while (
@@ -398,11 +400,11 @@ class ProverTaskGenerator(object):
         else:
           self.count_dupes += 1
 
-  def create_task_list(
-      self,
-      proof_log_iterator: Iterable[deephol_pb2.ProofLog],
-      dedupe: bool = True,
-      verbosity: int = 1000) -> proof_assistant_pb2.ProverTaskList:
+  def create_task_list(self,
+                       proof_log_iterator: Iterable[deephol_pb2.ProofLog],
+                       dedupe: bool = True,
+                       verbosity: int = 1000
+                      ) -> proof_assistant_pb2.ProverTaskList:
     """Iterate over proof logs to create an optionally deduplicated task list.
 
     This method iterates over proof logs, generates tasks, dedupes them

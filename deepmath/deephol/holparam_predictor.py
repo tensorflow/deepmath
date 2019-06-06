@@ -13,6 +13,7 @@ from typing import Optional
 from typing import Text
 
 from deepmath.deephol import predictions
+from deepmath.deephol import process_sexp
 from tensorflow.core.protobuf import saved_model_pb2
 
 GOAL_EMB_TYPE = predictions.GOAL_EMB_TYPE
@@ -20,6 +21,7 @@ THM_EMB_TYPE = predictions.THM_EMB_TYPE
 STATE_ENC_TYPE = predictions.STATE_ENC_TYPE
 
 
+# TODO(smloos) Move this function and test to predictions.py
 def recommend_from_scores(scores: List[List[float]], n: int) -> List[List[int]]:
   """Return the index of the top n predicted scores.
 
@@ -48,14 +50,22 @@ def get_saved_model_path(training_ckpt_base):
   Returns:
     The path to a saved model protobuff or None if none is found.
   """
-  ckpt_dir = os.path.dirname(training_ckpt_base + '.meta')
-  saved_models_dir = os.path.join(ckpt_dir, 'export', 'best_exporter')
-  saved_model_paths = tf.gfile.Glob(os.path.join(saved_models_dir, '*'))
-  if saved_model_paths:
-    return os.path.join(saved_model_paths[0],
-                        tf.saved_model.constants.SAVED_MODEL_FILENAME_PB)
+  ckpt_dir = os.path.dirname(training_ckpt_base)
+  # If using a checkpoint from the best_exporter, return its saved_model.
+  if os.path.basename(ckpt_dir) == 'variables':
+    return os.path.join(
+        os.path.dirname(ckpt_dir),
+        tf.saved_model.constants.SAVED_MODEL_FILENAME_PB)
+  # If using a training checkpoint, still return the eval saved_model.
   else:
-    return None
+    saved_models_dir = os.path.join(ckpt_dir, 'export', 'best_exporter')
+    saved_model_paths = tf.gfile.Glob(os.path.join(saved_models_dir, '*'))
+    if saved_model_paths:
+      return os.path.join(saved_model_paths[0],
+                          tf.saved_model.constants.SAVED_MODEL_FILENAME_PB)
+    # Otherwise, there is not eval saved_model.
+    else:
+      return None
 
 
 class HolparamPredictor(predictions.Predictions):
@@ -98,10 +108,17 @@ class HolparamPredictor(predictions.Predictions):
     """Close the session when deleted."""
     self._sess.close()
 
+  def _goal_string_for_predictions(self, goals: List[Text]) -> List[Text]:
+    return [process_sexp.process_sexp(goal) for goal in goals]
+
+  def _thm_string_for_predictions(self, thms: List[Text]) -> List[Text]:
+    return [process_sexp.process_sexp(thm) for thm in thms]
+
   def _batch_goal_embedding(self, goals: List[Text]) -> List[GOAL_EMB_TYPE]:
     """From a list of string goals, compute and return their embeddings."""
     # Get the first goal_net collection (second entry may be duplicated to align
     # with negative theorems)
+    goals = self._goal_string_for_predictions(goals)
     embeddings = self._sess.run(
         fetches=self._graph.get_collection('goal_net'),
         feed_dict={self._graph.get_collection('goal_string')[0]: goals})[0]
@@ -110,9 +127,10 @@ class HolparamPredictor(predictions.Predictions):
   def _batch_thm_embedding(self, thms: List[Text]) -> List[THM_EMB_TYPE]:
     """From a list of string theorems, compute and return their embeddings."""
     # The checkpoint should have exactly one value in this collection.
-    [embeddings] = self._sess.run(
+    thms = self._thm_string_for_predictions(thms)
+    embeddings = self._sess.run(
         fetches=self._graph.get_collection('thm_net'),
-        feed_dict={self._graph.get_collection('thm_string')[0]: thms})
+        feed_dict={self._graph.get_collection('thm_string')[0]: thms})[0]
     return embeddings
 
   def thm_embedding(self, thm: Text) -> THM_EMB_TYPE:
@@ -172,7 +190,7 @@ class HolparamPredictor(predictions.Predictions):
     # The checkpoint should have only one value in this collection.
     feed_dict = {
         self._graph.get_collection('goal_net')[-1]: state_encodings,
-        self._graph.get_collection('thm_net')[0]: thm_embeddings
+        self._graph.get_collection('thm_net')[-1]: thm_embeddings
     }
     if self._training_meta:
       feed_dict[self._graph.get_collection('fc_keep_prob')[0]] = 1.0
@@ -216,7 +234,7 @@ class TacDependentPredictor(HolparamPredictor):
     # The checkpoint should have only one value in this collection.
     feed_dict = {
         self._graph.get_collection('goal_net')[-1]: state_encodings,
-        self._graph.get_collection('thm_net')[0]: thm_embeddings,
+        self._graph.get_collection('thm_net')[-1]: thm_embeddings,
         self._graph.get_collection('label_tac_id')[0]: tactic_ids
     }
     if self._training_meta:

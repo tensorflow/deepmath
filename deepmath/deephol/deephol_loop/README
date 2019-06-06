@@ -1,0 +1,20 @@
+This directory contains reference code for implementing the reinforcement
+learning loop of the HOList paper:
+
+HOList: An Environment for Machine Learning of Higher-Order Theorem Proving
+https://arxiv.org/abs/1904.03241
+
+This code does not work outside the Google infrastructure as it relies
+on Google-internal data formats (SSTable and Recordio) and the Google-internal
+runner of Apache Beam pipelines.
+
+The four missing objects are "imported" from the "missing" subpackage of the
+deephol_loop package.
+
+In order to make this RL loop work on non-Google infrastrcture, one
+needs to reimplement the two missing readers and writers (SSTable and
+Recordio) for Apache beam and the file type test in the checkpoint monitoring
+in addition to using a different runner for beam pipelines.
+
+Note however, that this code was never run outside of Google, so it serves
+no purpose other than reference for the above paper.

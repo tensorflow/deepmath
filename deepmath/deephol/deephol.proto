@@ -1,6 +1,7 @@
 syntax = "proto2";
 
 package deepmath_deephol;
+
 import "deepmath/proof_assistant/proof_assistant.proto";
 
 message IntegerInterval {
@@ -52,6 +53,14 @@ message ActionGeneratorOptions {
   optional bool asm_meson_only = 2 [default = false];
   // Use ASM_MESON_TAC [] with no parameters.
   optional bool asm_meson_no_params_only = 3 [default = false];
+  // Probability with which to chose a random tactic instead of using the model.
+  optional float random_tactic_probability = 4 [default = 0.0];
+  // Number of theorem parameters to pick based on similarity (the number of
+  // parameters vary depending on the interval). Total number of parameters is
+  // still bounded by max_theorem_parameters.
+  optional IntegerInterval num_similar_parameters = 5;
+  // Bag of words based similar
+  optional bool bag_of_words_similar = 6 [default = false];
 }
 
 // Prover round stores information about phases of the proving
@@ -74,6 +83,7 @@ message ProverOptions {
     HIST_CONV = 2;
     HIST_ATT = 3;
     PARAMETERS_CONDITIONED_ON_TAC = 4;
+    GNN_GOAL = 5;
   }
   optional string path_theorem_database = 1;
   optional string path_model_prefix = 2;
@@ -105,6 +115,8 @@ message ProverOptions {
   // If nonempty: only the theorems with library tag in this list will be
   // processed (current set of tags: "core", "complex", "flyspeck").
   repeated string library_tags = 16;
+  // Per-tactic timeout.
+  optional int64 tactic_timeout_ms = 17 [default = 5000];
 }
 
 message ProofLog {

@@ -87,6 +87,7 @@ message GoalList {
 message ApplyTacticRequest {
   optional Theorem goal = 1;
   optional string tactic = 2;
+  optional int64 timeout_ms = 3 [default = 5000];
 }
 
 message ApplyTacticResponse {

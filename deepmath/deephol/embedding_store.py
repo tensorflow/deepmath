@@ -12,10 +12,10 @@ from __future__ import print_function
 import os
 import numpy as np
 import tensorflow as tf
-from typing import List, Optional
+from typing import List, Optional, Text
 from deepmath.deephol import io_util
 from deepmath.deephol import predictions
-from deepmath.deephol import process_sexp
+from deepmath.deephol.utilities import normalization_lib
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
@@ -39,8 +39,8 @@ class TheoremEmbeddingStore(object):
     self.assumptions = []
     self.assumption_embeddings = None
 
-  def compute_assumption_embeddings(self, assumptions: List[str]) -> None:
-    """Compute the embeddings for a list of assumptions and store them.
+  def compute_assumption_embeddings(self, assumptions: List[Text]) -> None:
+    """DEPRECATED - Compute embeddings for a list of assumptions and store them.
 
     The assumptions are preprocessed by truncting by the truncation value
     specified in the constructor.
@@ -48,26 +48,18 @@ class TheoremEmbeddingStore(object):
     Args:
       assumptions: List of assumptions. Their order will be preserved.
     """
-    self.assumptions = list(assumptions)
-    if self.assumptions:
-      tf.logging.info('assumptions: "%s"', assumptions)
-      processed_assumptions = [
-          process_sexp.process_sexp(assumption) for assumption in assumptions
-      ]
-      self.assumption_embeddings = self.predictor.batch_thm_embedding(
-          processed_assumptions)
-    else:
-      self.assumption_embeddings = None
+    raise NotImplementedError(
+        'Computing embedding of assumptions is not implemented.')
 
   def compute_embeddings_for_thms_from_db(
       self, theorem_database: proof_assistant_pb2.TheoremDatabase) -> None:
-    thms = [
-        process_sexp.process_sexp(thm.conclusion)
+    normalized_thms = [
+        normalization_lib.normalize(thm).conclusion
         for thm in theorem_database.theorems
     ]
-    self.thm_embeddings = self.predictor.batch_thm_embedding(thms)
+    self.thm_embeddings = self.predictor.batch_thm_embedding(normalized_thms)
 
-  def compute_embeddings_for_thms_from_db_file(self, file_path: str) -> None:
+  def compute_embeddings_for_thms_from_db_file(self, file_path: Text) -> None:
     """Compute the embeddings for the theorems given in a test file.
 
     Args:
@@ -77,7 +69,7 @@ class TheoremEmbeddingStore(object):
     theorem_database = io_util.load_theorem_database_from_file(file_path)
     self.compute_embeddings_for_thms_from_db(theorem_database)
 
-  def read_embeddings(self, file_path: str) -> None:
+  def read_embeddings(self, file_path: Text) -> None:
     """Read the embeddings and theorem list from the specified files.
 
     Args:
@@ -87,7 +79,7 @@ class TheoremEmbeddingStore(object):
     with tf.gfile.Open(file_path, 'rb') as f:
       self.thm_embeddings = np.load(f)
 
-  def save_embeddings(self, file_path: str):
+  def save_embeddings(self, file_path: Text):
     """Save the embeddings and theorem list to the specified files.
 
     Args:
@@ -101,6 +93,11 @@ class TheoremEmbeddingStore(object):
       assert tf.gfile.Exists(dir_name)
     with tf.gfile.Open(file_path, 'wb') as f:
       np.save(f, self.thm_embeddings)
+
+  def get_embeddings_for_preceding_thms(self, thm_index):
+    assert thm_index <= self.thm_embeddings.shape[0]
+    assert thm_index >= 0
+    return self.thm_embeddings[:thm_index]
 
   def get_thm_scores_for_preceding_thms(self,
                                         goal_embedding,
@@ -131,13 +128,9 @@ class TheoremEmbeddingStore(object):
     else:
       assert thm_index <= self.thm_embeddings.shape[0]
       assert thm_index >= 0
-    if self.assumption_embeddings is not None:
-      assert self.assumptions
-      thm_embeddings = np.concatenate((self.thm_embeddings[:thm_index, :],
-                                       self.assumption_embeddings))
-    else:
-      assert not self.assumptions
-      thm_embeddings = self.thm_embeddings[:thm_index]
+    assert not self.assumptions
+    assert not self.assumption_embeddings
+    thm_embeddings = self.thm_embeddings[:thm_index]
     assert len(thm_embeddings) == thm_index + len(self.assumptions)
     return self.predictor.batch_thm_scores(goal_embedding, thm_embeddings,
                                            tactic_id)

@@ -17,8 +17,6 @@ from typing import NamedTuple
 from typing import Optional
 from typing import Text
 
-from deepmath.deephol import process_sexp
-
 # Numpy arrays do not support type checking for arrays with different shapes.
 # [goal_emb_size] float32
 GOAL_EMB_TYPE = np.ndarray
@@ -87,14 +85,6 @@ def batched_run(inputs, evaluator, max_batch_size):
     return np.concatenate(outputs)
 
 
-def _goal_string_for_predictions(goals: List[Text]) -> List[Text]:
-  return [process_sexp.process_sexp(goal) for goal in goals]
-
-
-def _thm_string_for_predictions(thms: List[Text]) -> List[Text]:
-  return [process_sexp.process_sexp(thm) for thm in thms]
-
-
 class ProofState(
     NamedTuple('ProofState', [('goal', Text), ('asl', List[Text]),
                               ('goal_hist', List[Text]), ('orig_conj', Text)])):
@@ -159,7 +149,6 @@ class Predictions(object):
 
   def batch_goal_embedding(self, goals: List[Text]) -> BATCH_GOAL_EMB_TYPE:
     """Computes embeddings from a list of goals."""
-    goals = _goal_string_for_predictions(goals)
     return batched_run([goals], self._batch_goal_embedding,
                        self.max_embedding_batch_size)
 
@@ -175,7 +164,6 @@ class Predictions(object):
 
   def batch_thm_embedding(self, thms: List[Text]) -> BATCH_THM_EMB_TYPE:
     """From a list of string theorems, computes and returns their embeddings."""
-    thms = _thm_string_for_predictions(thms)
     return batched_run([thms], self._batch_thm_embedding,
                        self.max_embedding_batch_size)
 

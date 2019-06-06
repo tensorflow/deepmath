@@ -11,6 +11,8 @@ from deepmath.deephol import proof_search_tree
 from deepmath.deephol import prover_util
 from deepmath.proof_assistant import proof_assistant_pb2
 
+PER_TACTIC_TIMEOUT_MS = 5000
+
 
 class MockHolLightWrapper(object):
 
@@ -124,7 +126,8 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('axy', 1.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 2)
     for i, node in enumerate(tree.nodes):
       self.assertEqual(node.index, i)
@@ -142,11 +145,13 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('axy', 1.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 2)
     node = tree.nodes[1]
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 2)
     self.assertEqual(tree.nodes[1].closed, True)
     self.assertEqual(tree.nodes[0].closed, True)
@@ -157,16 +162,19 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('axy', 1.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 2)
     node = tree.nodes[1]
     gen = mock_generator(('az', 1.0))
-    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 3)
     node = tree.nodes[2]
     self.assertEqual(str(node.goal.conclusion), 'cxyz')
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(node, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 3)
     self.assertEqual(tree.nodes[2].closed, True)
     self.assertEqual(tree.nodes[1].closed, True)
@@ -178,17 +186,20 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('bxy', 1.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 3)
     self.assertEqual(str(tree.nodes[1].goal.conclusion), 'cx')
     self.assertEqual(str(tree.nodes[2].goal.conclusion), 'cy')
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(tree.nodes[2].closed, None)
     self.assertEqual(tree.nodes[1].closed, True)
     self.assertEqual(tree.nodes[0].closed, False)
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(tree.nodes[2].closed, True)
     self.assertEqual(tree.nodes[0].closed, True)
     proof_search_tree.check_tree_consistency(tree)
@@ -198,17 +209,20 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('ay', 1.0), ('ax', 2.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 3)
     self.assertEqual(str(tree.nodes[1].goal.conclusion), 'cx')
     self.assertEqual(str(tree.nodes[2].goal.conclusion), 'cy')
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(tree.nodes[2].closed, None)
     self.assertEqual(tree.nodes[1].closed, True)
     self.assertEqual(tree.nodes[0].closed, True)
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(tree.nodes[2].closed, True)
     self.assertEqual(tree.nodes[0].closed, True)
     proof_search_tree.check_tree_consistency(tree)
@@ -218,19 +232,22 @@ class ProverUtilTest(tf.test.TestCase):
     tree = self.tree
     root = tree.nodes[0]
     gen = mock_generator(('ay', 1.0), ('ax', 2.0))
-    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 3)
     self.assertEqual(str(tree.nodes[1].goal.conclusion), 'cx')
     self.assertEqual(str(tree.nodes[2].goal.conclusion), 'cy')
     gen = mock_generator(('rz', 1.0))
-    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 4)
     self.assertEqual(tree.nodes[3].closed, None)
     self.assertEqual(tree.nodes[2].closed, None)
     self.assertEqual(tree.nodes[1].closed, False)
     self.assertEqual(tree.nodes[0].closed, False)
     gen = mock_generator(('rz', 1.0))
-    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[2], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 4)
     self.assertEqual(len(tree.nodes[3].parents), 2)
     self.assertEqual(tree.nodes[3].closed, None)
@@ -238,7 +255,8 @@ class ProverUtilTest(tf.test.TestCase):
     self.assertEqual(tree.nodes[1].closed, False)
     self.assertEqual(tree.nodes[0].closed, False)
     gen = mock_generator(('c', 1.0))
-    prover_util.try_tactics(tree.nodes[3], 10, 0, 10, MOCK_PREMISE_SET, gen)
+    prover_util.try_tactics(tree.nodes[3], 10, 0, 10, MOCK_PREMISE_SET, gen,
+                            PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 4)
     self.assertEqual(tree.nodes[3].closed, True)
     self.assertEqual(tree.nodes[2].closed, True)

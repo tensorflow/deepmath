@@ -1,0 +1,69 @@
+syntax = "proto2";
+
+package deepmath_deephol;
+
+message TFExamplePipelineOptions {
+  optional ConvertorOptions convertor_options = 1;
+
+  // Typical way to specify input; can be comma-separated list of globs.
+  optional string proof_logs = 2;
+  // Theorem database used for splits; and possibly more in the future.
+  optional string theorem_database = 12;
+  // Where to write all output to; will create dir if not present.
+  optional string out_dir = 3;  // currently required
+
+  // What to write to out_dir
+  // Write TFExamples as TFRecords - only useful for public data releases
+  optional bool export_tfrecords = 4 [default = false];
+  // Write TFExamples as SSTables. For internal training.
+  optional bool export_sstables = 5 [default = true];
+  // Write proof logs as text after transformations; for public data releases
+  optional bool export_textpb_proof_logs = 6 [default = false];
+  // Write proof logs as recordio after transformations
+  optional bool export_recordio_proof_logs = 7 [default = false];
+
+  // Configuration of the pipeline:
+  // Normalize the proof log before converting to TFExamples
+  optional bool normalize_proof_logs = 9 [default = true];
+  // remove build info and path info from proof log; for releasing data.
+  optional bool strip_paths = 10 [default = false];
+  // Create the thms_ls.train file, containing all tactic arguments occurring
+  // in the proof logs. Used for training tactic argument selection.
+  optional bool create_thms_ls = 11 [default = true];
+}
+
+// Flags, as well as options for conversion from proof logs to TF examples.
+message ConvertorOptions {
+  enum ScrubParametersEnum {
+    // Default, processing should fail.
+    UNKNOWN = 0;
+    // Nothing is scrubbed, all parameters go in.
+    NOTHING = 1;
+    // Only testing is scrubbed.
+    TESTING = 2;
+    // Both validation and test parameters are scrubbed.
+    VALIDATION_AND_TESTING = 3;
+  }
+  enum TFExampleFormat {
+    UNSPECIFIED = 0;
+    // TFExamples as in HOList paper
+    // Typically paired with option extract_only_closed_proofs = true.
+    HOLPARAM = 1;
+  }
+
+  // Use TFExamplePipelineOptions.proof_logs instead of the following:
+  optional string prooflogs_path = 1 [deprecated = true];
+  optional string theorem_database_path = 2;
+  optional string tactics_path = 3;
+  // Hack to take care of the issue that our tactic action space is smaller than
+  // actually applied/logged tactics.
+  // TODO(kbk): Expand the tactic action space, remove this hack.
+  optional bool replacements_hack = 4 [default = true];
+  optional ScrubParametersEnum scrub_parameters = 5 [default = NOTHING];
+  optional TFExampleFormat format = 6 [default = HOLPARAM];
+  // Extract only successful proofs from logs and discard unsuccessful proofs
+  // WARNING: When this option is set to false in combination with
+  // TFExampleFormat.HOLPARAM, TFExamples for all closed proof nodes are
+  // generated (instead of only from closed proofs).
+  optional bool extract_only_closed_proofs = 7;
+}

@@ -38,7 +38,7 @@ from deepmath.public import error
 
 
 def _extract_tactic_and_parameters(
-    tactic_string: str) -> Tuple[str, List[deephol_pb2.TacticParameter]]:
+    tactic_string: Text) -> Tuple[Text, List[deephol_pb2.TacticParameter]]:
   """Extract the tactic string and its parameter list from a string.
 
   Args:
@@ -288,6 +288,7 @@ class TacticApplication(object):
       thm = proof_assistant_pb2.Theorem(
           hypotheses=goal.hypotheses,
           conclusion=goal.conclusion,
+          pretty_printed=goal.pretty_printed,
           tag=proof_assistant_pb2.Theorem.GOAL)
       subgoal_ref = SubGoalRef(tactic_application=self, subgoal_index=i)
       self.subgoals.append(tree.add_node(thm, subgoal_ref))

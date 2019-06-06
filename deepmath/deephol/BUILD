@@ -50,7 +50,7 @@ py_test(
     ],
     deps = [
         ":holparam_predictor",
-        ":predictions",
+        ":predictions_abstract_base_test",
         ":test_util",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
@@ -64,6 +64,7 @@ py_library(
     srcs = ["holparam_predictor.py"],
     deps = [
         ":predictions",
+        ":process_sexp",
         "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
         "@org_tensorflow//tensorflow/core:protos_all_py",
@@ -87,10 +88,7 @@ py_library(
 py_library(
     name = "predictions",
     srcs = ["predictions.py"],
-    deps = [
-        ":process_sexp",
-        "//third_party/py/numpy",
-    ],
+    deps = ["//third_party/py/numpy"],
 )
 
 py_test(
@@ -103,6 +101,18 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@org_tensorflow//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "predictions_abstract_base_test",
+    srcs = ["predictions_abstract_base_test.py"],
+    deps = [
+        ":predictions",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@org_tensorflow//tensorflow:tensorflow_py",
+        "@six_archive//:six",
     ],
 )
 
@@ -136,9 +146,11 @@ py_library(
         ":predictions",
         ":process_sexp",
         ":proof_search_tree",
-        "//deepmath/deephol:theorem_fingerprint",
+        ":theorem_fingerprint",
+        "//deepmath/deephol/utilities:normalization_lib",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "//third_party/py/numpy",
+        "//third_party/py/scipy",
         "@org_tensorflow//tensorflow:tensorflow_py",
     ],
 )
@@ -158,7 +170,7 @@ py_test(
         ":proof_search_tree",
         ":prover_util",
         ":test_util",
-        "//deepmath/deephol:theorem_fingerprint",
+        ":theorem_fingerprint",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:parameterized",
@@ -174,6 +186,7 @@ py_library(
         ":io_util",
         ":predictions",
         ":process_sexp",
+        "//deepmath/deephol/utilities:normalization_lib",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "//third_party/py/numpy",
         "@org_tensorflow//tensorflow:tensorflow_py",
@@ -226,6 +239,7 @@ py_test(
 py_binary(
     name = "main",
     srcs = ["main.py"],
+    # python_version_2
     deps = [
         ":prover_flags",
         ":prover_runner",
@@ -238,7 +252,7 @@ py_library(
     srcs = ["proof_search_tree.py"],
     deps = [
         ":deephol_proto_py",
-        "//deepmath/deephol:theorem_fingerprint",
+        ":theorem_fingerprint",
         "//deepmath/deephol/public:proof_assistant",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "//deepmath/public:error",
@@ -287,6 +301,7 @@ py_library(
         ":deephol_proto_py",
         ":io_util",
         ":prover",
+        "//deepmath/deephol/utilities:stats",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "//deepmath/public:build_data",
         "@org_tensorflow//tensorflow:tensorflow_py",
@@ -301,7 +316,7 @@ py_library(
         ":deephol_proto_py",
         ":io_util",
         ":proof_search_tree",
-        "//deepmath/deephol:theorem_fingerprint",
+        ":theorem_fingerprint",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "@org_tensorflow//tensorflow:tensorflow_py",
         "@protobuf_archive//:protobuf_python",
@@ -327,7 +342,6 @@ py_library(
     deps = [
         ":deephol_proto_py",
         ":prover_util",
-        "//deepmath/deephol:theorem_fingerprint",
         "//deepmath/deephol/public:proof_assistant",
         "//deepmath/proof_assistant:proof_assistant_proto_py",
         "//deepmath/public:error",

@@ -30,7 +30,7 @@ _OPERATORS = {'IN', 'SUBSET', '>', '<', '=', '..', '-', '+', '*', '==',
               '<=', '==>', '>=', 'MOD', '$', '|-', 'UNION', '\\/', ',',
               'INSERT', 'INTER', 'DIFF', 'PCROSS', 'DELETE', 'HAS_SIZE',
               'EXP', 'PSUBSET', 'DIV', 'CROSS', 'o', '=_c', '<=_c', 'treal_eq',
-              '<_c', 'treal_le', 'treal_mul', 'treal_add', '/\\', '>=_c',
+              '<_c', 'treal_le', 'treal_mul', 'treal_add', '/\\', '>=_c', '>_c',
              }
 _BINDERS_AND_OPERATORS = _BINDERS | _OPERATORS
 

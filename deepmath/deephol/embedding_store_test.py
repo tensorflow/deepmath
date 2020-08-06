@@ -1,25 +1,18 @@
 """Tests for third_party.deepmath.deephol.embedding_store_lib."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
-import tempfile
-
-from absl import flags
 from absl.testing import parameterized
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from deepmath.deephol import embedding_store
 from deepmath.deephol import io_util
-from deepmath.deephol import mock_predictions_lib
+from deepmath.deephol import mock_predictions
 from deepmath.deephol import test_util
 from deepmath.deephol.utilities import normalization_lib
 from deepmath.proof_assistant import proof_assistant_pb2
 
 TEST_THEOREM_DB_PATH = 'deephol/data/mini_theorem_database.textpb'
-MOCK_PREDICTOR = mock_predictions_lib.MockPredictionsLib()
+MOCK_PREDICTOR = mock_predictions.MockPredictions()
 
 
 def _process_thms(thms):
@@ -29,7 +22,8 @@ def _process_thms(thms):
 class EmbeddingStoreTest(tf.test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    self.test_subdirectory = tempfile.mkdtemp(dir=flags.FLAGS.test_tmpdir)
+    super(EmbeddingStoreTest, self).setUp()
+    self.test_subdirectory = self.create_tempdir().full_path
     self.store = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
     self.thm_db = proof_assistant_pb2.TheoremDatabase()
     for i in range(8):
@@ -61,11 +55,68 @@ class EmbeddingStoreTest(tf.test.TestCase, parameterized.TestCase):
   def test_save_read_embeddings(self):
     store = self.store
     store.compute_embeddings_for_thms_from_db(self.thm_db)
-    file_path = os.path.join(flags.FLAGS.test_tmpdir, 'embs', 'embs.npy')
+    file_path = os.path.join(self.test_subdirectory, 'embs', 'embs.npy')
     store.save_embeddings(file_path)
     store2 = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
     store2.read_embeddings(file_path)
     self.assertAllClose(store.thm_embeddings, store2.thm_embeddings)
+
+  def test_save_read_sharded_embeddings_fails(self):
+    store = self.store
+    store.compute_embeddings_for_thms_from_db(self.thm_db)
+    file_path1 = os.path.join(self.test_subdirectory, 'embs', 'embs.npy_1')
+    file_path2 = os.path.join(self.test_subdirectory, 'embs', 'embs.npy_2')
+    store.save_embeddings(file_path1)
+    store.save_embeddings(file_path2)
+    store2 = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
+    file_pattern = os.path.join(self.test_subdirectory, 'embs', 'embs.npy_*')
+    with self.assertRaises(ValueError):
+      store2.read_embeddings(file_pattern)
+
+  def test_save_read_sharded_embeddings(self):
+    store = self.store
+    store.compute_embeddings_for_thms_from_db(self.thm_db)
+    file_path1 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-000-of-002')
+    file_path2 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-001-of-002')
+    store.save_embeddings(file_path1)
+    store.save_embeddings(file_path2)
+    store2 = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
+    file_pattern = os.path.join(self.test_subdirectory, 'embs', 'embs.npy*')
+    store2.read_embeddings(file_pattern)
+    self.assertLen(store2.thm_embeddings, 2 * len(store.thm_embeddings))
+
+  def test_save_read_sharded_embeddings_incomplete(self):
+    store = self.store
+    store.compute_embeddings_for_thms_from_db(self.thm_db)
+    file_path1 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-000-of-003')
+    file_path2 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-001-of-003')
+    store.save_embeddings(file_path1)
+    store.save_embeddings(file_path2)
+    store2 = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
+    file_pattern = os.path.join(self.test_subdirectory, 'embs', 'embs.npy*')
+    # make sure the test is set up correctly:
+    self.assertLen(tf.gfile.Glob(file_pattern), 2)
+    # the actual thing to test:
+    with self.assertRaises(ValueError):
+      store2.read_embeddings(file_pattern)
+
+  def test_save_read_sharded_embeddings_inconsistent_max_shards(self):
+    store = self.store
+    store.compute_embeddings_for_thms_from_db(self.thm_db)
+    file_path1 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-000-of-002')
+    file_path2 = os.path.join(self.test_subdirectory, 'embs',
+                              'embs.npy-001-of-003')
+    store.save_embeddings(file_path1)
+    store.save_embeddings(file_path2)
+    store2 = embedding_store.TheoremEmbeddingStore(MOCK_PREDICTOR)
+    file_pattern = os.path.join(self.test_subdirectory, 'embs', 'embs.npy*')
+    with self.assertRaises(ValueError):
+      store2.read_embeddings(file_pattern)
 
   @parameterized.parameters(1, 3, 7, None)
   def test_get_thm_scores_for_preceding_thms(self, theorem_index):

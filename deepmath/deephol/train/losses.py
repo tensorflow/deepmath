@@ -1,15 +1,6 @@
 """Loss and prediction functions for HOLparam models."""
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
-import tensorflow as tf
-
-from typing import Any
-from typing import Dict
-from typing import Text
+from typing import Any, Dict, Text
+import tensorflow.compat.v1 as tf
 
 FLAGS = tf.flags.FLAGS
 

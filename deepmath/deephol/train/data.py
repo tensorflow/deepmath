@@ -9,15 +9,9 @@ input_fn = data.get_input_fn(dataset=dataset, mode=mode, params=params,
                              repeat=False)
 features, labels = input_fn()
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
 import functools
 import os
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 TRAIN = tf.estimator.ModeKeys.TRAIN
 EVAL = tf.estimator.ModeKeys.EVAL
@@ -88,13 +82,13 @@ def generic_parser(serialized_example, feature_list, label_list):
   example = tf.parse_single_example(
       serialized_example,
       features={
-          # Subgoal features
-          # goal: the consequent term of the subgoal as a string.
+          # goal features
+          # goal: the conclusion of the goal as a string.
           'goal': tf.FixedLenFeature((), tf.string, default_value=''),
-          # goal_asl: list of hypotheses of the subgoal.
+          # goal_asl: list of assumptions of the goal.
           'goal_asl': tf.VarLenFeature(dtype=tf.string),
-          # Parameterized tactic applied to the subgoal
-          # tactic: string name of tactic that is applied to this subgoal.
+          # Parameterized tactic applied to the goal
+          # tactic: string name of tactic that is applied to this goal.
           'tactic': tf.FixedLenFeature((), tf.string, default_value=''),
           # tac_id: integer id of tactic.
           'tac_id': tf.FixedLenFeature((), tf.int64, default_value=-1),

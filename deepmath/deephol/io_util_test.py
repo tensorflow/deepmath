@@ -1,12 +1,5 @@
 """Tests for third_party.deepmath.deephol.io_util."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
-
-
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import deephol_pb2
 from deepmath.deephol import io_util
 
@@ -14,6 +7,7 @@ from deepmath.deephol import io_util
 class IOUtilTest(tf.test.TestCase):
 
   def setUp(self):
+    super(IOUtilTest, self).setUp()
     self.tac0 = deephol_pb2.Tactic(id=0, name="TAC0")
     self.tac1 = deephol_pb2.Tactic(id=1, name="TAC1")
     self.tac1r = deephol_pb2.Tactic(id=1, name="TAC1r")
@@ -52,6 +46,13 @@ class IOUtilTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Replacement.*bounds"):
       io_util._process_tactics_and_replacements(self.tactics_info,
                                                 self.replacements)
+
+  def test_read_proof_logs(self):
+    tempfile = self.create_tempfile(
+        file_path="proof_log.textpb", content="num_proofs: 0")
+    proof_log_iterator = io_util.read_proof_logs(tempfile.full_path)
+    proof_logs = [p for p in proof_log_iterator]
+    self.assertEqual([deephol_pb2.ProofLog(num_proofs=0)], proof_logs)
 
 
 if __name__ == "__main__":

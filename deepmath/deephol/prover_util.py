@@ -3,20 +3,16 @@
 This module contains various utility functions that can be shared between
 various theorem prover objects and other helper utilities.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-import time
-import tensorflow as tf
 from typing import Iterable, Iterator, List, Optional, Text
+import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
 from deepmath.deephol import action_generator
 from deepmath.deephol import deephol_pb2
 from deepmath.deephol import io_util
 from deepmath.deephol import proof_search_tree
 from deepmath.deephol import theorem_fingerprint
+from deepmath.deephol import theorem_utils
+from deepmath.deephol.utilities import sexpression_parser
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
@@ -52,6 +48,8 @@ def make_prover_task_for_goal(goal: proof_assistant_pb2.Theorem,
   Returns:
     ProverTask for proving the theorem using all preceding theorems.
   """
+  assert goal.tag == proof_assistant_pb2.Theorem.GOAL, (
+      'Creating prover task with a goal that has incorrect tag.')
   return proof_assistant_pb2.ProverTask(
       premise_set=make_premise_set(theorem, database_name), goals=[goal])
 
@@ -67,7 +65,8 @@ def make_prover_task(theorem: proof_assistant_pb2.Theorem,
   Returns:
     ProverTask for proving the theorem using all preceding theorems.
   """
-  return make_prover_task_for_goal(theorem, theorem, database_name)
+  goal = theorem_utils.theorem_to_goal(theorem)
+  return make_prover_task_for_goal(goal, theorem, database_name)
 
 
 def is_thm_included(thm, splits, library_tags):
@@ -87,12 +86,12 @@ def is_thm_included(thm, splits, library_tags):
     Boolean indicating whether the theorem is included in the selection.
   """
   return thm.training_split in splits and (
-      (not library_tags or (set(thm.library_tag) & library_tags)))
+      (not library_tags or (set(thm.library_tag) & set(library_tags))))
 
 
-def create_tasks_for_theorem_db(theorem_db: proof_assistant_pb2.TheoremDatabase,
-                                allowed_splits, library_tags
-                               ) -> List[proof_assistant_pb2.ProverTask]:
+def create_tasks_for_theorem_db(
+    theorem_db: proof_assistant_pb2.TheoremDatabase, allowed_splits,
+    library_tags) -> List[proof_assistant_pb2.ProverTask]:
   """Creates the theorem proving tasks for each theorem in the theorem database.
 
   The tasks will have the premise sets of all the theorems in the database
@@ -114,14 +113,6 @@ def create_tasks_for_theorem_db(theorem_db: proof_assistant_pb2.TheoremDatabase,
       for thm in theorem_db.theorems
       if is_thm_included(thm, allowed_splits, library_tags)
   ]
-
-
-def theorem_to_goal_proto(thm: proof_assistant_pb2.Theorem
-                         ) -> proof_assistant_pb2.Theorem:
-  return proof_assistant_pb2.Theorem(
-      tag=proof_assistant_pb2.Theorem.GOAL,
-      hypotheses=thm.hypotheses,
-      conclusion=thm.conclusion)
 
 
 def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
@@ -151,29 +142,19 @@ def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
   assert not node.action_generation_time_millisec
   assert not node.successful_attempts
   assert not node.failed_attempts
-  node.closed = False
-  start_time = time.time()
-  suggestion_scores = action_gen.step(node, premise_set)
-  node.action_generation_time_millisec = int(
-      round(1000.0 * (time.time() - start_time)))
-  tf.logging.info('Suggestions and scores: %s', str(suggestion_scores))
-  if not suggestion_scores:
+  suggestions = action_gen.step(node, premise_set)
+  tf.logging.info('Suggestions and scores: %s', str(suggestions))
+  if not suggestions:
     return 0
-  top_suggestions = sorted(suggestion_scores, key=lambda x: x[1], reverse=True)
-  request = proof_assistant_pb2.ApplyTacticRequest(
-      goal=theorem_to_goal_proto(node.goal), timeout_ms=tactic_timeout_ms)
-  tf.logging.info('Attempting to apply tactics: %s', str(top_suggestions))
+  top_suggestions = sorted(suggestions, key=lambda x: x.score, reverse=True)
   node.processed = True
   while (
       top_suggestions and
       (len(node.successful_attempts) < min_successes or
        (len(node.successful_attempts) + len(node.failed_attempts) <= max_tries))
       and (len(node.successful_attempts) < max_successes)):
-    top_suggestion, score = top_suggestions.pop(0)
-    request.tactic = top_suggestion
-    proof_search_tree.TacticApplication(node, node.successful_attempts,
-                                        node.failed_attempts, node.tree,
-                                        request, score)
+    tactic, params, score = top_suggestions.pop(0)
+    node.apply_tactic(tactic, params, tactic_timeout_ms, score)
   if not node.successful_attempts:
     node.failed = True
     # Set those nodes to ignore that have become useless due to this
@@ -182,7 +163,7 @@ def try_tactics(node: proof_search_tree.ProofSearchNode, max_tries: int,
   return len(node.successful_attempts)
 
 
-def translate_splits(splits: str):
+def translate_splits(splits: Text):
   """Translate a comma separated list of splits in to python set.
 
   Args:
@@ -223,7 +204,8 @@ class ProverTaskGenerator(object):
                create_tasks_for_closed_goals: bool = False,
                create_tasks_for_open_goals: bool = False,
                create_tasks_for_theorems: bool = False,
-               create_tasks_for_subgoals: bool = False):
+               create_tasks_for_subgoals: bool = False,
+               negator=None):
     """Constructor.
 
     Several flags control for which subset of the nodes should we generate
@@ -242,6 +224,7 @@ class ProverTaskGenerator(object):
         top-level theorems.
       create_tasks_for_subgoals: Specifies whether we should generate tasks for
         internal goal nodes of a proof.
+      negator: None or, if wish to negate goal, ansobject with negate method.
     """
     self.theorem_db_name = theorem_db.name
     self.splits = splits
@@ -252,6 +235,7 @@ class ProverTaskGenerator(object):
     self.create_tasks_for_open_goals = create_tasks_for_open_goals
     self.create_tasks_for_theorems = create_tasks_for_theorems
     self.create_tasks_for_subgoals = create_tasks_for_subgoals
+    self.negator = negator
     self.errors = []
     self.count_errors = {}
     self.nodes_omitted = 0
@@ -266,6 +250,7 @@ class ProverTaskGenerator(object):
     self.closed_others = 0
     self.nodes_refuted = 0
     self.count_dupes = 0
+    self.parse_errors = 0
 
   def node_stats(self):
     return (
@@ -278,6 +263,7 @@ class ProverTaskGenerator(object):
         ('(Open + Closed) Theorems: %d   Subgoals: %d   Others: %d\n' %
          (self.open_theorems + self.closed_theorems, self.open_subgoals +
           self.closed_subgoals, self.open_others + self.closed_others)) +
+        ('Parse errors: %d\n' % self.parse_errors) +
         ('Refuted: %d/omitted: %d' % (self.nodes_refuted, self.nodes_omitted)))
 
   def error_report(self):
@@ -298,8 +284,9 @@ class ProverTaskGenerator(object):
     self.errors = []
     return errors
 
-  def create_tasks(self, proof_log: deephol_pb2.ProofLog
-                  ) -> Iterator[proof_assistant_pb2.ProverTask]:
+  def create_tasks(
+      self, proof_log: deephol_pb2.ProofLog
+  ) -> Iterator[proof_assistant_pb2.ProverTask]:
     """Creates a stream of task according to the configuration.
 
     Args:
@@ -309,7 +296,10 @@ class ProverTaskGenerator(object):
       Prover tasks created for the subgoals.
     """
     self.count_logs += 1
-    top_theorem = proof_log.theorem_in_database
+    if proof_log.HasField('theorem_in_database'):
+      top_theorem = proof_log.theorem_in_database
+    else:
+      top_theorem = proof_log.nodes[0].goal
     if top_theorem is None:
       tf.logging.fatal(text_format.MessageToString(proof_log))
       self.emit_error('Top level theorem is not found in the proof_log.')
@@ -326,22 +316,26 @@ class ProverTaskGenerator(object):
       return
     for node in proof_log.nodes:
       process = False
+      is_subgoal = not node.root_goal
+      is_top_level_theorem = (
+          theorem_fingerprint.Fingerprint(
+              node.goal) == theorem_fingerprint.Fingerprint(database_theorem))
       if node.status == deephol_pb2.ProofNode.PROVED:
         process = self.create_tasks_for_closed_goals
-        if node.goal.tag == proof_assistant_pb2.Theorem.THEOREM:
+        if is_top_level_theorem:
           process = process and self.create_tasks_for_theorems
           self.closed_theorems += 1
-        elif node.goal.tag == proof_assistant_pb2.Theorem.GOAL:
+        elif is_subgoal:
           process = process and self.create_tasks_for_subgoals
           self.closed_subgoals += 1
         else:
           self.closed_others += 1
       elif node.status == deephol_pb2.ProofNode.UNKNOWN:
         process = self.create_tasks_for_open_goals
-        if node.goal.tag == proof_assistant_pb2.Theorem.THEOREM:
+        if is_top_level_theorem:
           process = process and self.create_tasks_for_theorems
           self.open_theorems += 1
-        elif node.goal.tag == proof_assistant_pb2.Theorem.GOAL:
+        elif is_subgoal:
           self.open_subgoals += 1
           process = process and self.create_tasks_for_subgoals
         else:
@@ -352,7 +346,14 @@ class ProverTaskGenerator(object):
         self.nodes_refuted += 1
         process = False
       if process:
-        task = make_prover_task_for_goal(node.goal, top_theorem,
+        try:
+          sexpression_parser.validate_parens(node.goal.conclusion)
+        except sexpression_parser.SExpParseError:
+          self.parse_errors += 1
+          process = False
+      if process:
+        goal = self.negator.negate(node.goal) if self.negator else node.goal
+        task = make_prover_task_for_goal(goal, top_theorem,
                                          self.theorem_db_name)
         for goal in task.goals:
           goal.training_split = database_theorem.training_split
@@ -400,11 +401,11 @@ class ProverTaskGenerator(object):
         else:
           self.count_dupes += 1
 
-  def create_task_list(self,
-                       proof_log_iterator: Iterable[deephol_pb2.ProofLog],
-                       dedupe: bool = True,
-                       verbosity: int = 1000
-                      ) -> proof_assistant_pb2.ProverTaskList:
+  def create_task_list(
+      self,
+      proof_log_iterator: Iterable[deephol_pb2.ProofLog],
+      dedupe: bool = True,
+      verbosity: int = 1000) -> proof_assistant_pb2.ProverTaskList:
     """Iterate over proof logs to create an optionally deduplicated task list.
 
     This method iterates over proof logs, generates tasks, dedupes them
@@ -427,11 +428,14 @@ class ProverTaskGenerator(object):
     return task_list
 
 
-def get_task_list(prover_tasks_file: Optional[str],
-                  prover_task_list_file: Optional[str],
-                  tasks_by_fingerprint: Optional[Text],
-                  theorem_db: Optional[proof_assistant_pb2.TheoremDatabase],
-                  splits, library_tags) -> List[proof_assistant_pb2.ProverTask]:
+def get_task_list(
+    prover_tasks_file: Optional[Text],
+    prover_task_list_file: Optional[Text],
+    tasks_by_fingerprint: Optional[Text],
+    theorem_db: Optional[proof_assistant_pb2.TheoremDatabase],
+    splits,
+    library_tags,
+    fingerprint_file=None) -> List[proof_assistant_pb2.ProverTask]:
   """Get a list of theorem from either sources.
 
   Whichever parameter is specified first is used as a source for the
@@ -448,13 +452,16 @@ def get_task_list(prover_tasks_file: Optional[str],
       splits that are not specified.
     library_tags: List of strings for the library tags to be processed. If
       empty, then all library tags are allowed.
-
+    fingerprint_file: Optional file name for theorem fingerprints to be
+      processed. Each theorem fingerprint must correspond to theorem in
+      the database. It can only be specified if tasks by fingerprint is not
+      specified.
   Returns:
     List of tasks extracted.
   """
   if prover_tasks_file:
     tf.logging.info('Loading tasks from tasks file "%s".', prover_tasks_file)
-    return [
+    prover_tasks = [
         task for task in io_util.read_protos(prover_tasks_file,
                                              proof_assistant_pb2.ProverTask)
         if is_thm_included(task.goals[0], splits, library_tags)
@@ -465,19 +472,23 @@ def get_task_list(prover_tasks_file: Optional[str],
     task_list = io_util.load_text_proto(prover_task_list_file,
                                         proof_assistant_pb2.ProverTaskList,
                                         'prover task list')
-    return [
+    prover_tasks = [
         task for task in task_list.tasks
         if is_thm_included(task.goals[0], splits, library_tags)
     ]
-  elif tasks_by_fingerprint:
+  elif tasks_by_fingerprint or fingerprint_file is not None:
     if not theorem_db:
       tf.logging.fatal('Require a theorem database to create prover tasks from '
                        'fingerprints.')
     tf.logging.info('Generating task list for fingerprint(s) %s',
                     tasks_by_fingerprint)
-    fingerprints = set([int(fp) for fp in tasks_by_fingerprint.split(',')])
+    if tasks_by_fingerprint:
+      assert fingerprint_file is None
+      fingerprints = set([int(fp) for fp in tasks_by_fingerprint.split(',')])
+    else:
+      fingerprints = io_util.load_fingerprints_from_file(fingerprint_file)
     theorems = []
-    for thm in theorem_db.theorems:
+    for thm in theorem_db.theorems:  # pytype: disable=attribute-error
       fingerprint = theorem_fingerprint.Fingerprint(thm)
       if fingerprint in fingerprints:
         fingerprints.remove(fingerprint)
@@ -485,9 +496,16 @@ def get_task_list(prover_tasks_file: Optional[str],
     if fingerprints:
       tf.logging.error('Some fingerprints could not be found in theorem db: %s',
                        str(fingerprints))
-    return [
-        make_prover_task_for_goal(thm, thm, theorem_db.name) for thm in theorems
+    prover_tasks = [
+        make_prover_task(thm, theorem_db.name) for thm in theorems  # pytype: disable=attribute-error
     ]
   else:
     tf.logging.info('Generating task list for theorem database.')
-    return create_tasks_for_theorem_db(theorem_db, splits, library_tags)
+    prover_tasks = create_tasks_for_theorem_db(theorem_db, splits, library_tags)
+
+  for task in prover_tasks:
+    for goal in task.goals:
+      if goal.tag != proof_assistant_pb2.Theorem.GOAL:
+        tf.logging.error('Prover task had a wrong tag. Fixing it to GOAL.')
+      goal.tag = proof_assistant_pb2.Theorem.GOAL
+  return prover_tasks

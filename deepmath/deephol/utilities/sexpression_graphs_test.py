@@ -1,15 +1,34 @@
 """Tests for deephol.utilities.expression_graphs."""
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
 from absl.testing import parameterized
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
+from deepmath.deephol import theorem_utils
+from deepmath.deephol import to_sexpression
 from deepmath.deephol.utilities import sexpression_graphs
 from deepmath.proof_assistant import proof_assistant_pb2
+
+
+def get_parents(graph, sexp):
+  return graph.parents[sexpression_graphs.to_node_id(sexp)]
+
+
+def get_children(graph, sexp):
+  return graph.children[sexpression_graphs.to_node_id(sexp)]
+
+
+def get_label(graph, sexp):
+  return graph.labels[sexpression_graphs.to_node_id(sexp)]
+
+
+def _assume_theorem(term):
+  return proof_assistant_pb2.Theorem(
+      conclusion=term,
+      hypotheses=[term],
+      tag=proof_assistant_pb2.Theorem.THEOREM)
+
+
+def normalize_expr_text(expr):
+  expr = expr.replace('(', ' ( ').replace(')', ' ) ')
+  return expr.replace('  ', ' ').replace('  ', ' ').strip()
 
 
 class SExpressionGraphsTest(parameterized.TestCase):
@@ -50,29 +69,29 @@ class SExpressionGraphsTest(parameterized.TestCase):
     self.assertEmpty(g.parents)
     self.assertEmpty(g.children)
 
-  def test_get_label(self):
+  def test_label(self):
     g = sexpression_graphs.SExpressionGraph('(a (b a))')
-    self.assertEqual(g.get_label('(a (b a))'), None)
-    self.assertEqual(g.get_label('(b a)'), None)
-    self.assertEqual(g.get_label('a'), 'a')
+    self.assertIsNone(get_label(g, '(a (b a))'))
+    self.assertIsNone(get_label(g, '(b a)'))
+    self.assertEqual(get_label(g, 'a'), 'a')
     with self.assertRaises(Exception):
-      g.get_label('c')
+      get_label(g, 'c')
 
-  def test_get_parents(self):
+  def test_parents(self):
     g = sexpression_graphs.SExpressionGraph('(a (b a))')
-    self.assertEmpty(g.get_parents('(a (b a))'))
-    self.assertLen(g.get_parents('(b a)'), 1)
-    self.assertLen(g.get_parents('a'), 2)
+    self.assertEmpty(get_parents(g, '(a (b a))'))
+    self.assertLen(get_parents(g, '(b a)'), 1)
+    self.assertLen(get_parents(g, 'a'), 2)
     with self.assertRaises(Exception):
-      g.get_parents('c')
+      get_parents(g, 'c')
 
-  def test_get_children(self):
+  def test_children(self):
     g = sexpression_graphs.SExpressionGraph('(a (b a))')
-    self.assertLen(g.get_children('(a (b a))'), 2)
-    self.assertLen(g.get_children('(b a)'), 2)
-    self.assertEmpty(g.get_children('a'))
+    self.assertLen(get_children(g, '(a (b a))'), 2)
+    self.assertLen(get_children(g, '(b a)'), 2)
+    self.assertEmpty(get_children(g, 'a'))
     with self.assertRaises(Exception):
-      g.get_children('c')
+      get_children(g, 'c')
 
   def test_no_argument(self):
     g = sexpression_graphs.SExpressionGraph()  # should be the same as None
@@ -85,8 +104,8 @@ class SExpressionGraphsTest(parameterized.TestCase):
     self.assertLen(g.labels, 1)
     self.assertLen(g.parents, 1)
     self.assertLen(g.children, 1)
-    self.assertEmpty(g.get_parents('()'))
-    self.assertEmpty(g.get_children('()'))
+    self.assertEmpty(get_parents(g, '()'))
+    self.assertEmpty(get_children(g, '()'))
 
   def test_bare_words_not_accepted(self):
     with self.assertRaises(Exception):
@@ -105,51 +124,51 @@ class SExpressionGraphsTest(parameterized.TestCase):
     self.assertLen(g.labels, 2)
     self.assertLen(g.parents, 2)
     self.assertLen(g.children, 2)
-    self.assertEmpty(g.get_parents('(asdf)'))
-    self.assertLen(g.get_children('(asdf)'), 1)
-    self.assertEmpty(g.get_children('asdf'))
-    self.assertLen(g.get_parents('asdf'), 1)
+    self.assertEmpty(get_parents(g, '(asdf)'))
+    self.assertLen(get_children(g, '(asdf)'), 1)
+    self.assertEmpty(get_children(g, 'asdf'))
+    self.assertLen(get_parents(g, 'asdf'), 1)
 
   def test_single_child_with_parens(self):
     g = sexpression_graphs.SExpressionGraph('(())')
     self.assertLen(g.labels, 2)
     self.assertLen(g.parents, 2)
     self.assertLen(g.children, 2)
-    self.assertEmpty(g.get_parents('(())'))
-    self.assertLen(g.get_children('(())'), 1)
-    self.assertEmpty(g.get_children('()'))
-    self.assertLen(g.get_parents('()'), 1)
+    self.assertEmpty(get_parents(g, '(())'))
+    self.assertLen(get_children(g, '(())'), 1)
+    self.assertEmpty(get_children(g, '()'))
+    self.assertLen(get_parents(g, '()'), 1)
 
   def test_two_children(self):
     g = sexpression_graphs.SExpressionGraph('(asdf ())')
     self.assertLen(g.labels, 3)
     self.assertLen(g.parents, 3)
     self.assertLen(g.children, 3)
-    self.assertEmpty(g.get_parents('(asdf ())'))
-    self.assertLen(g.get_children('(asdf ())'), 2)
-    self.assertEmpty(g.get_children('asdf'))
-    self.assertLen(g.get_parents('asdf'), 1)
-    self.assertEmpty(g.get_children('()'))
-    self.assertLen(g.get_parents('()'), 1)
+    self.assertEmpty(get_parents(g, '(asdf ())'))
+    self.assertLen(get_children(g, '(asdf ())'), 2)
+    self.assertEmpty(get_children(g, 'asdf'))
+    self.assertLen(get_parents(g, 'asdf'), 1)
+    self.assertEmpty(get_children(g, '()'))
+    self.assertLen(get_parents(g, '()'), 1)
 
   def test_two_equal_children(self):
     g = sexpression_graphs.SExpressionGraph('(asdf asdf)')
     self.assertLen(g.labels, 2)
     self.assertLen(g.parents, 2)
     self.assertLen(g.children, 2)
-    self.assertEmpty(g.get_parents('(asdf asdf)'))
-    self.assertLen(g.get_children('(asdf asdf)'), 2)  # order is important here
-    self.assertEmpty(g.get_children('asdf'))
-    self.assertLen(g.get_parents('asdf'), 1)  # order of parents not important
+    self.assertEmpty(get_parents(g, '(asdf asdf)'))
+    self.assertLen(get_children(g, '(asdf asdf)'), 2)  # order is important here
+    self.assertEmpty(get_children(g, 'asdf'))
+    self.assertLen(get_parents(g, 'asdf'), 1)  # order of parents not important
 
   def test_variable_named_v(self):
     g = sexpression_graphs.SExpressionGraph('(v N v)')
     self.assertLen(g.labels, 3)
     self.assertLen(g.parents, 3)
     self.assertLen(g.children, 3)
-    self.assertEmpty(g.get_parents('(v N v)'))
-    self.assertLen(g.get_parents('v'), 1)  # parents pointers collapsed
-    self.assertLen(g.get_children('(v N v)'), 3)  # order is important here
+    self.assertEmpty(get_parents(g, '(v N v)'))
+    self.assertLen(get_parents(g, 'v'), 1)  # parents pointers collapsed
+    self.assertLen(get_children(g, '(v N v)'), 3)  # order is important here
     self.assertTrue(g.is_leaf_node(sexpression_graphs.to_node_id('v')))
 
   def test_real_expression(self):
@@ -198,32 +217,42 @@ class SExpressionGraphsTest(parameterized.TestCase):
       ('theorem',
        proof_assistant_pb2.Theorem(
            conclusion='(v (fun (prod ?0 ?0) (bool)) P)',
-           hypotheses=['(v (fun (prod ?0 ?0) (bool)) Q)'],
            tag=proof_assistant_pb2.Theorem.THEOREM),
-       '(h ((v (fun (prod ?0 ?0) (bool)) Q)) (v (fun (prod ?0 ?0) (bool)) P))'),
+       '(<theorem> (v (fun (prod ?0 ?0) (bool)) P))'),
       ('goal',
        proof_assistant_pb2.Theorem(
            conclusion='(v (fun (prod ?0 ?0) (bool)) P)',
-           hypotheses=['(v (fun (prod ?0 ?0) (bool)) Q)'],
+           assumptions=[
+               theorem_utils.assume_term('(v (fun (prod ?0 ?0) (bool)) Q)')
+           ],
            tag=proof_assistant_pb2.Theorem.GOAL),
-       '(g ((v (fun (prod ?0 ?0) (bool)) Q)) (v (fun (prod ?0 ?0) (bool)) P))'),
+       '(<goal> (<theorem> (v (fun (prod ?0 ?0) (bool)) Q)'
+       ' (v (fun (prod ?0 ?0) (bool)) Q)) (v (fun (prod ?0 ?0) (bool)) P))'),
       ('definition',
        proof_assistant_pb2.Theorem(
            conclusion='(v (fun (prod ?0 ?0) (bool)) P)',
-           definition=proof_assistant_pb2.Definition(
-               constants=['constant1', 'constant2']),
            tag=proof_assistant_pb2.Theorem.DEFINITION),
-       '(d (constant1 constant2) (v (fun (prod ?0 ?0) (bool)) P))'),
+       '(<theorem> (v (fun (prod ?0 ?0) (bool)) P))'),
       ('type_definition',
        proof_assistant_pb2.Theorem(
            conclusion='(v (fun (prod ?0 ?0) (bool)) P)',
-           type_definition=proof_assistant_pb2.TypeDefinition(
-               type_name='test_type_name'),
            tag=proof_assistant_pb2.Theorem.TYPE_DEFINITION),
-       '(t test_type_name (v (fun (prod ?0 ?0) (bool)) P))'))
+       '(<theorem> (v (fun (prod ?0 ?0) (bool)) P))'))
   def test_add_theorem(self, theorem, expected_val):
-
-    g = sexpression_graphs.SExpressionGraph(theorem)
+    # Do not include assumptions
+    if theorem.tag == proof_assistant_pb2.Theorem.GOAL:
+      sexp = to_sexpression.convert_goal(theorem, conclusion_only=True)
+    else:
+      sexp = to_sexpression.convert_theorem(theorem, conclusion_only=True)
+    g = sexpression_graphs.SExpressionGraph(sexp)
+    self.assertLen(g.roots(), 1)
+    self.assertEqual(g.to_text(g.roots()[0]), theorem.conclusion)
+    # Include assumptions
+    if theorem.tag == proof_assistant_pb2.Theorem.GOAL:
+      sexp = to_sexpression.convert_goal(theorem, conclusion_only=False)
+    else:
+      sexp = to_sexpression.convert_theorem(theorem, conclusion_only=False)
+    g = sexpression_graphs.SExpressionGraph(sexp)
     self.assertLen(g.roots(), 1)
     self.assertEqual(g.to_text(g.roots()[0]), expected_val)
 
@@ -539,8 +568,7 @@ class SExpressionGraphsTest(parameterized.TestCase):
     for n in g.nodes:
       for c in g.children[n]:
         self.assertGreater(o[n], o[c])
-    roots = g.roots()
-    roots.sort()
+    roots = g.roots()  # Already sorted by hash value
     root_pairs = zip(roots[:-1], roots[1:])
     for r1, r2 in root_pairs:
       self.assertGreater(o[r2], o[r1])
@@ -553,6 +581,41 @@ class SExpressionGraphsTest(parameterized.TestCase):
     self.assertNotIn(sexpression_graphs.to_node_id('bool'),
                      o)  # ... only occurs as '(bool)'
     self.assertIn(sexpression_graphs.to_node_id('(bool)'), o)
+
+  def test_to_token_arity_pair(self):
+    expr_text = '(c (fun (bool) (fun (bool) (bool))) /\\)'
+    g = sexpression_graphs.SExpressionGraph(expr_text)
+    roots = g.roots()
+    self.assertLen(roots, 1)
+    root = roots[0]
+    pairs = g.to_token_arity_pair_list(root)
+    self.assertEqual(pairs, [('c', 3), ('fun', 3), ('bool', 1), ('fun', 3),
+                             ('bool', 1), ('bool', 1), ('/\\', 0)])
+
+  @parameterized.parameters(
+      '(c (fun (bool) (fun (bool) (bool))) /\\)',
+      '(l (v (cart (real) M) y) (a (a (c (fun (bool) (fun '
+      '(bool) (bool))) ==>) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) '
+      '(a (a (c (fun (cart (real) M) (fun (fun (cart (real) M) (bool)) '
+      '(bool))) IN) (v (cart (real) M) x)) (v (fun (cart (real) M) (bool)) '
+      's))) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun '
+      '(cart (real) M) (fun (fun (cart (real) M) (bool)) (bool))) IN) (v '
+      '(cart (real) M) y)) (v (fun (cart (real) M) (bool)) s))) (a (a (c '
+      '(fun (cart (real) N) (fun (cart (real) N) (bool))) =) (a (v (fun '
+      '(cart (real) M) (cart (real) N)) f) (v (cart (real) M) x))) (a (v '
+      '(fun (cart (real) M) (cart (real) N)) f) (v (cart (real) M) y)))))) '
+      '(a (a (c (fun (cart (real) M) (fun (cart (real) M) (bool))) =) (v '
+      '(cart (real) M) x)) (v (cart (real) M) y))))')
+  def test_token_arity_pair_to_expr(self, expr_text):
+    g = sexpression_graphs.SExpressionGraph(expr_text)
+    roots = g.roots()
+    self.assertLen(roots, 1)
+    root = roots[0]
+    ref_text = normalize_expr_text(g.to_text(root))
+    self.assertEqual(ref_text, normalize_expr_text(expr_text))
+    pairs = g.to_token_arity_pair_list(root)
+    reconstruction = sexpression_graphs.token_arity_pairs_to_sexpr(pairs)
+    self.assertEqual(ref_text, ' '.join(reconstruction))
 
 
 if __name__ == '__main__':

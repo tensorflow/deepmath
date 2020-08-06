@@ -4,15 +4,12 @@ This module contains the class TheoremEmbeddingStore that is used for
 storing theorem embeddings and can compute goal parameter scoring for a large
 number of theorems.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
 import os
-import numpy as np
-import tensorflow as tf
+import re
+import time
 from typing import List, Optional, Text
+import numpy as np
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import io_util
 from deepmath.deephol import predictions
 from deepmath.deephol.utilities import normalization_lib
@@ -53,11 +50,12 @@ class TheoremEmbeddingStore(object):
 
   def compute_embeddings_for_thms_from_db(
       self, theorem_database: proof_assistant_pb2.TheoremDatabase) -> None:
-    normalized_thms = [
-        normalization_lib.normalize(thm).conclusion
-        for thm in theorem_database.theorems
+    normalized_theorems = [
+        normalization_lib.normalize(theorem)
+        for theorem in theorem_database.theorems
     ]
-    self.thm_embeddings = self.predictor.batch_thm_embedding(normalized_thms)
+    self.thm_embeddings = self.predictor.batch_thm_proto_embedding(
+        normalized_theorems)
 
   def compute_embeddings_for_thms_from_db_file(self, file_path: Text) -> None:
     """Compute the embeddings for the theorems given in a test file.
@@ -69,15 +67,47 @@ class TheoremEmbeddingStore(object):
     theorem_database = io_util.load_theorem_database_from_file(file_path)
     self.compute_embeddings_for_thms_from_db(theorem_database)
 
-  def read_embeddings(self, file_path: Text) -> None:
-    """Read the embeddings and theorem list from the specified files.
+  def read_embeddings(self, pattern: Text) -> None:
+    """Read the embeddings and theorem list from the specified pattern.
 
     Args:
-      file_path: Path to the file in which the embeddings are stored.
+      pattern: Paths in which the embeddings are stored. If it consists of
+        multiple files it must be a sharded file of the form *-XXXXX-of-YYYYY
+        and all shards must be available.
     """
-    tf.logging.info('Reading embeddings from "%s"', file_path)
-    with tf.gfile.Open(file_path, 'rb') as f:
-      self.thm_embeddings = np.load(f)
+    tf.logging.info('Reading embeddings from "%s"', pattern)
+    paths = tf.gfile.Glob(pattern)
+    shards = []
+    if not paths:
+      raise ValueError('Cannot find embedding store at given pattern: %s' %
+                       pattern)
+    if len(paths) > 1:
+      total_number_of_shards = None
+      regex = '-[0-9]*-of-([0-9]*)'
+      for path in paths:
+        try:
+          matches = re.search(regex, path)
+          if not matches:
+            raise ValueError('Path does not seem to be part of a sharded file: '
+                             '%s' % path)
+          number_of_shards = int(matches.groups()[0])
+        except:  # pylint: disable=broad-except
+          raise ValueError('Path needs to be part of a sharded file. %s' % path)
+        if total_number_of_shards is None:
+          total_number_of_shards = number_of_shards
+        if total_number_of_shards != number_of_shards:
+          raise ValueError('Inconsistent total number of shards in pattern.')
+      if len(paths) != total_number_of_shards:
+        raise ValueError('Not all shards of embedding store are available.')
+
+    start_time = time.time()
+    for path in sorted(paths):
+      with tf.gfile.Open(path, 'rb') as f:
+        shard = np.load(f)
+        if len(shard) > 0:  # pylint: disable=g-explicit-length-test
+          shards.append(shard)
+    self.thm_embeddings = np.concatenate(shards)
+    tf.logging.info('Read embeddings within %f sec', time.time() - start_time)
 
   def save_embeddings(self, file_path: Text):
     """Save the embeddings and theorem list to the specified files.
@@ -125,12 +155,9 @@ class TheoremEmbeddingStore(object):
     """
     if thm_index is None:
       thm_index = self.thm_embeddings.shape[0]
-    else:
-      assert thm_index <= self.thm_embeddings.shape[0]
-      assert thm_index >= 0
+    thm_embeddings = self.get_embeddings_for_preceding_thms(thm_index)
     assert not self.assumptions
     assert not self.assumption_embeddings
-    thm_embeddings = self.thm_embeddings[:thm_index]
     assert len(thm_embeddings) == thm_index + len(self.assumptions)
     return self.predictor.batch_thm_scores(goal_embedding, thm_embeddings,
                                            tactic_id)

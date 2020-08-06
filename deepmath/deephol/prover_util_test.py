@@ -1,14 +1,9 @@
 """Tests for third_party.deepmath.deephol.proof_search_tree."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import action_generator
 from deepmath.deephol import proof_search_tree
 from deepmath.deephol import prover_util
+from deepmath.deephol import theorem_utils
 from deepmath.proof_assistant import proof_assistant_pb2
 
 PER_TACTIC_TIMEOUT_MS = 5000
@@ -23,14 +18,19 @@ class MockHolLightWrapper(object):
     head = tactic[0]
     tail = tactic[1:]
     if head == 'a':  # Append the rest of the characters to goal
-      response.goals.goals.add(conclusion=str(request.goal.conclusion) + tail)
+      response.goals.goals.add(
+          conclusion=str(request.goal.conclusion) + tail,
+          tag=proof_assistant_pb2.Theorem.GOAL)
     elif head == 'b':  # Branch: append each character in separation.
       for c in tail:
-        response.goals.goals.add(conclusion=str(request.goal.conclusion) + c)
+        response.goals.goals.add(
+            conclusion=str(request.goal.conclusion) + c,
+            tag=proof_assistant_pb2.Theorem.GOAL)
     elif head == 'c':  # Close the goal.
       response.goals.goals.extend([])
     elif head == 'r':  # Replace: replace the goal with the string in tail.
-      response.goals.goals.add(conclusion=tail)
+      response.goals.goals.add(
+          conclusion=tail, tag=proof_assistant_pb2.Theorem.GOAL)
     elif head == 'e':  # Error: produce the error specified in tail.
       response.error = tail
     return response
@@ -47,7 +47,7 @@ class MockActionGenerator(action_generator.ActionGenerator):
 
 def mock_generator(*tactic_scores):
   return MockActionGenerator([
-      action_generator.Suggestion(string=tactic, score=score)
+      action_generator.Suggestion(tactic=tactic, params=[], score=score)
       for tactic, score in tactic_scores
   ])
 
@@ -65,8 +65,10 @@ MOCK_PREMISE_SET = prover_util.make_premise_set(MOCK_THEOREM, 'default')
 class ProverUtilTest(tf.test.TestCase):
 
   def setUp(self):
+    super(ProverUtilTest, self).setUp()
     tf.logging.info('Setting up tree...')
-    self.tree = proof_search_tree.ProofSearchTree(MOCK_WRAPPER, MOCK_THEOREM)
+    self.tree = proof_search_tree.ProofSearchTree(
+        MOCK_WRAPPER, theorem_utils.theorem_to_goal(MOCK_THEOREM))
 
   def test_create_initial_tree(self):
     tree = self.tree
@@ -76,10 +78,12 @@ class ProverUtilTest(tf.test.TestCase):
     def test_node(node):
       self.assertEqual(node.index, 0)
       self.assertEqual(str(node.goal.conclusion), 'c')
-      self.assertEqual([str(hyp) for hyp in node.goal.hypotheses], ['h'])
+      self.assertEqual([str(a.conclusion) for a in node.goal.assumptions],
+                       ['h'])
 
     test_node(tree.nodes[0])
-    self.assertEqual(tree.nodes_map['h|:|c'], 0)
+    tf.logging.error('tree.nodes_map: %s', tree.nodes_map)
+    self.assertEqual(tree.nodes_map['(<goal> (<theorem> h h) c)'], 0)
     request = proof_assistant_pb2.ApplyTacticRequest(
         goal=proof_assistant_pb2.Theorem(conclusion='g'), tactic='axy')
     self.assertEqual([
@@ -125,6 +129,7 @@ class ProverUtilTest(tf.test.TestCase):
   def test_apply_one_tactic(self):
     tree = self.tree
     root = tree.nodes[0]
+    self.assertEqual(root.goal.tag, proof_assistant_pb2.Theorem.GOAL)
     gen = mock_generator(('axy', 1.0))
     prover_util.try_tactics(root, 10, 0, 10, MOCK_PREMISE_SET, gen,
                             PER_TACTIC_TIMEOUT_MS)
@@ -137,7 +142,7 @@ class ProverUtilTest(tf.test.TestCase):
     self.assertEqual(len(root.successful_attempts), 1)
     self.assertEqual(len(root.failed_attempts), 0)
     self.assertEqual(root.closed, False)
-    self.assertEqual(node.closed, None)
+    self.assertIsNone(node.closed)
     proof_search_tree.check_tree_consistency(tree)
     self.check_log_consistency()
 
@@ -194,7 +199,7 @@ class ProverUtilTest(tf.test.TestCase):
     gen = mock_generator(('c', 1.0))
     prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
                             PER_TACTIC_TIMEOUT_MS)
-    self.assertEqual(tree.nodes[2].closed, None)
+    self.assertIsNone(tree.nodes[2].closed)
     self.assertEqual(tree.nodes[1].closed, True)
     self.assertEqual(tree.nodes[0].closed, False)
     gen = mock_generator(('c', 1.0))
@@ -217,7 +222,7 @@ class ProverUtilTest(tf.test.TestCase):
     gen = mock_generator(('c', 1.0))
     prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
                             PER_TACTIC_TIMEOUT_MS)
-    self.assertEqual(tree.nodes[2].closed, None)
+    self.assertIsNone(tree.nodes[2].closed)
     self.assertEqual(tree.nodes[1].closed, True)
     self.assertEqual(tree.nodes[0].closed, True)
     gen = mock_generator(('c', 1.0))
@@ -241,8 +246,8 @@ class ProverUtilTest(tf.test.TestCase):
     prover_util.try_tactics(tree.nodes[1], 10, 0, 10, MOCK_PREMISE_SET, gen,
                             PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 4)
-    self.assertEqual(tree.nodes[3].closed, None)
-    self.assertEqual(tree.nodes[2].closed, None)
+    self.assertIsNone(tree.nodes[3].closed)
+    self.assertIsNone(tree.nodes[2].closed)
     self.assertEqual(tree.nodes[1].closed, False)
     self.assertEqual(tree.nodes[0].closed, False)
     gen = mock_generator(('rz', 1.0))
@@ -250,7 +255,7 @@ class ProverUtilTest(tf.test.TestCase):
                             PER_TACTIC_TIMEOUT_MS)
     self.assertEqual(len(tree.nodes), 4)
     self.assertEqual(len(tree.nodes[3].parents), 2)
-    self.assertEqual(tree.nodes[3].closed, None)
+    self.assertIsNone(tree.nodes[3].closed)
     self.assertEqual(tree.nodes[2].closed, False)
     self.assertEqual(tree.nodes[1].closed, False)
     self.assertEqual(tree.nodes[0].closed, False)

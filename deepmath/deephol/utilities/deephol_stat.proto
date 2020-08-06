@@ -2,10 +2,57 @@ syntax = "proto2";
 
 package deepmath_deephol;
 
-import "deepmath/deephol/deephol.proto";
-
 message LogScaleHistogram {
-  map<int32, int32> h = 1;
+  map<int64, int64> h = 1;
+  optional float total_value = 2 [default = 0.0];
+  optional int64 num_values_added = 3 [default = 0];
+}
+
+message Histogram {
+  map<int64, int64> buckets = 1;
+  optional float total_value = 2 [default = 0.0];
+  optional int64 num_values_added = 3 [default = 0];
+  optional int64 num_values_out_of_range = 4 [default = 0];
+  // The remaining values need to configure upon initialization but are then
+  // assumed to never change.
+  optional float max_value = 5;
+  optional int64 num_buckets = 6;
+}
+
+message AggregateSearchStatistics {
+  optional Histogram search_depths = 1;
+  optional Histogram total_expansions = 2;
+  optional Histogram search_states = 3;
+  optional float aggregate_total_prediction_time_ms = 4;
+  optional LogScaleHistogram total_prediction_times_ms = 5;
+  // MCTS roots are all search states for which we build an MCTS search.
+  optional Histogram mcts_root_values = 6;
+  // The initial root is the state we start the entire search with.
+  optional Histogram mcts_initial_root_values = 7;
+  optional Histogram policy_kl_divergences = 8;
+  // The initial root is the state we start the entire search with. The
+  // following two histograms track their values for successful and unsuccessful
+  // proof attempts.
+  optional Histogram mcts_initial_root_values_closed = 9;
+  optional Histogram mcts_initial_root_values_open = 10;
+  optional Histogram failed_expansions = 11;
+  optional Histogram mcts_path_target_values = 12;
+  optional Histogram mcts_path_values_difference = 13;
+  optional Histogram mcts_path_values_squared_difference = 14;
+  optional Histogram mcts_values_all_states = 15;
+  optional Histogram mcts_initial_root_values_difference = 16;
+  optional Histogram goals_per_search_state = 17;
+  optional Histogram assumptions_per_goal = 18;
+}
+
+message PruningStatistics {
+  optional LogScaleHistogram proof_log_pruning_ms = 1;
+  optional LogScaleHistogram proof_node_pruning_ms = 2;
+  optional Histogram pruned_steps_num = 3;
+  // Histogram over all tactic applications that were pruned
+  optional Histogram pruned_parameters_num = 4;
+  // Number of times, per tactic application that strong pruning helped.
+  optional Histogram strong_pruning_successful = 5;
 }
 
 // Format for statistics for individual proofs.
@@ -13,38 +60,74 @@ message LogScaleHistogram {
 // theorem_fingerprint should be set to the goal theorem fingerprint.
 message ProofStat {
   // Number of theorems attempted.
-  optional int32 num_theorems_attempted = 1;
+  optional int64 num_theorems_attempted = 1;
   // Number of theorems (claimed to be) proved among the attempted ones.
-  optional int32 num_theorems_proved = 2;
+  optional int64 num_theorems_proved = 2;
   // Number of theorems claimed to be proved but did not check.
-  optional int32 num_theorems_with_bad_proof = 3;
+  optional int64 num_theorems_with_bad_proof = 3;
   // Number of overall proof-search nodes used.
   optional int64 num_nodes = 4;
   // A minimal set of nodes sufficient for proving all the closed theorems.
-  repeated int32 reduced_node_indices = 5;
+  repeated int64 reduced_node_indices = 5;
   // A set of proved nodes that were used produced during proof search.
-  repeated int32 closed_node_indices = 6;
+  repeated int64 closed_node_indices = 6;
   // The time spent in proof search.
   optional uint64 time_spent_milliseconds = 7;
   // If this is the statistics over an individual theorem, then the
   // fingerprint for the theorem to which these statistics belong.
-  optional uint64 theorem_fingerprint = 8;
+  // Replaced by the set 'attempted_theorems' below.
+  optional uint64 theorem_fingerprint = 8 [deprecated = true];
 
   // TacticApplicationStat-level statistics
   optional TacticApplicationStat tapp_stat = 9;
 
+  // Times to compute predictions and split up into embeddings, theorem scores
   optional int64 total_prediction_time = 10 [default = 0];
   optional LogScaleHistogram node_prediction_time_histogram = 11;
+  optional int64 total_embedding_time_ms = 15;
+  optional LogScaleHistogram embedding_times_ms = 16;
+  optional int64 total_theorem_score_time_ms = 17;
+  optional LogScaleHistogram theorem_scores_times_ms = 18;
+  optional LogScaleHistogram assumptions_ranking_time_ms = 23;
+  optional LogScaleHistogram heuristic_ranking_time_ms = 24;
+  // Time in milli-seconds spent pruning a single proof log.
+  optional int64 proof_log_pruning_time_ms = 20 [deprecated = true];
+  // Histogram of time in milli-seconds spent pruning each node in a single
+  // proof log.
+  optional LogScaleHistogram node_pruning_time_ms_distribution_in_proof_log = 21
+      [deprecated = true];
+
+  // Ways in which the proof log should be aggreegated for statistics
+  repeated string labels = 12;
+
+  // Maps fingerprints to how often the theorem has been proven/attempted.
+  map<int64, int64> proven_theorems = 13;
+  map<int64, int64> attempted_theorems = 14;
+  // Maps fingerprints to the total error of MCTS values (for each proof attempt
+  // the value is first averaged over the best_path).
+  map<int64, float> mean_mcts_value_diffs = 25;
+
+  // Maps fingerprints of theorems to how often they were used as premises.
+  map<int64, int64> premise_usages = 19;
+
+  optional AggregateSearchStatistics search_statistics = 22;
+  optional PruningStatistics pruning = 26;
+}
+
+// Aggregate statistics about multiple proofs, partitioned by library tag.
+message LabeledAggregateStats {
+  // Aggregated stats per label
+  map<string, ProofAggregateStat> labeled_stats = 1;
 }
 
 // Aggregate statistics about multiple proofs.
 message ProofAggregateStat {
   // Number of theorems attempted.
-  optional int32 num_theorems_attempted = 1 [default = 0];
+  optional int64 num_theorems_attempted = 1 [default = 0];
   // Number of theorems (claimed to be) proved among the attempted ones.
-  optional int32 num_theorems_proved = 2 [default = 0];
+  optional int64 num_theorems_proved = 2 [default = 0];
   // Number of theorems claimed to be proved but did not check.
-  optional int32 num_theorems_with_bad_proof = 3 [default = 0];
+  optional int64 num_theorems_with_bad_proof = 3 [default = 0];
   // Number of overall proof-search nodes used.
   optional int64 num_nodes = 4 [default = 0];
   // Number of nodes sufficient for proving all the closed theorems.
@@ -61,17 +144,45 @@ message ProofAggregateStat {
   optional LogScaleHistogram proof_time_histogram_proved = 10;
   optional LogScaleHistogram proof_time_histogram_failed = 11;
   // Distribution of num_reduced nodes
-  map<int32, int32> num_reduced_nodes_distribution = 13;
-  // Distribution of prediction times
-  optional int64 total_prediction_time = 14 [default = 0];
-  optional LogScaleHistogram proof_prediction_time_histogram = 15;
-  optional LogScaleHistogram node_prediction_time_histogram = 16;
+  map<int64, int64> num_reduced_nodes_distribution = 13;
+  // Distribution of prediction times in ms
+  optional int64 total_prediction_time = 14 [default = 0];          // in ms
+  optional LogScaleHistogram proof_prediction_time_histogram = 15;  // in ms
+  optional LogScaleHistogram node_prediction_time_histogram = 16;   // in ms
+  optional int64 total_embedding_time_ms = 20;
+  optional LogScaleHistogram embedding_times_ms = 21;
+  optional int64 total_theorem_score_time_ms = 22;
+  optional LogScaleHistogram theorem_scores_times_ms = 23;
+  optional LogScaleHistogram assumptions_ranking_time_ms = 29;
+  optional LogScaleHistogram heuristic_ranking_time_ms = 30;
+  // Aggregated time in milli-seconds spent pruning a set of proof logs.
+  optional int64 proof_log_aggregate_pruning_time_ms = 26;
+  // Histogram of time in milli-seconds spent pruning each node in an aggregated
+  // set of proof logs.
+  optional LogScaleHistogram
+      node_pruning_time_ms_distribution_in_aggregated_proof_logs = 27
+      [deprecated = true];
 
   // TacticApplication-level statistics
   optional TacticApplicationStat tapp_stat = 12;
 
   // Storing the search time for each closed proof; for cactus plots
   repeated uint64 proof_closed_after_millis = 17;
+
+  // Sets of fingerprints; implemented as maps (value is always 0)
+  map<int64, int64> proven_theorems = 18;
+  map<int64, int64> attempted_theorems = 19;
+  // Maps fingerprints to the total error of MCTS values (for each proof attempt
+  // the value is first averaged over the best_path).
+  map<int64, float> mean_mcts_value_diffs = 31;
+
+  // Maps fingerprints of theorems to how often they were used as premises.
+  map<int64, int64> premise_usages = 24;
+  // Maps fingerprints with long proofs to their proof length.
+  map<uint64, int64> long_proofs_fp = 25;
+
+  optional AggregateSearchStatistics search_statistics = 28;
+  optional PruningStatistics pruning = 32;
 }
 
 message TacticTimeStat {
@@ -83,6 +194,10 @@ message TacticTimeStat {
   optional LogScaleHistogram unchanged_distribution = 4;
   // Only failed applications of this tactic
   optional LogScaleHistogram failed_distribution = 5;
+  optional int64 tactic_aggregate_pruning_time_ms = 6 [deprecated = true];
+  optional LogScaleHistogram
+      tactic_pruning_time_ms_distribution_in_aggregated_tactic_applications = 7
+      [deprecated = true];
 }
 
 message TacticApplicationStat {
@@ -91,31 +206,33 @@ message TacticApplicationStat {
 
   // per tactic stats
   map<string, int64> time_spent_per_tactic = 2;
-  map<string, int32> total_tactic_applications_per_tactic = 3;
-  map<string, int32> successful_tactic_applications_per_tactic = 4;
-  map<string, int32> unchanged_tactic_applications_per_tactic = 5;
-  map<string, int32> failed_tactic_applications_per_tactic = 6;
-  map<string, int32> unknown_tactic_applications_per_tactic = 7;
-  map<string, int32> closing_tactic_applications_per_tactic = 8;
-  map<string, int32> closed_applications_per_tactic = 22;
+  map<string, int64> total_tactic_applications_per_tactic = 3;
+  map<string, int64> successful_tactic_applications_per_tactic = 4;
+  map<string, int64> unchanged_tactic_applications_per_tactic = 5;
+  map<string, int64> failed_tactic_applications_per_tactic = 6;
+  map<string, int64> unknown_tactic_applications_per_tactic = 7;
+  map<string, int64> closing_tactic_applications_per_tactic = 8;
+  map<string, int64> closed_applications_per_tactic = 22;
 
   optional TacticTimeStat meson_stat = 9;
   optional TacticTimeStat rewrite_stat = 10;
   optional TacticTimeStat simp_stat = 11;
+  // Time stats for all the tactics combined.
+  optional TacticTimeStat overall_stat = 25;
 
   // by rank
-  map<int32, int64> time_per_rank = 12;
-  map<int32, int32> total_per_rank = 13;
-  map<int32, int32> success_per_rank = 14;
-  map<int32, int32> failed_per_rank = 15;
-  map<int32, int32> unchanged_per_rank = 16;
-  map<int32, int32> closed_per_rank = 24;
+  map<int64, int64> time_per_rank = 12;
+  map<int64, int64> total_per_rank = 13;
+  map<int64, int64> success_per_rank = 14;
+  map<int64, int64> failed_per_rank = 15;
+  map<int64, int64> unchanged_per_rank = 16;
+  map<int64, int64> closed_per_rank = 24;
 
   // by score
-  map<int32, int64> time_per_score = 17;
-  map<int32, int32> total_per_score = 18;
-  map<int32, int32> success_per_score = 19;
-  map<int32, int32> failed_per_score = 20;
-  map<int32, int32> unchanged_per_score = 21;
-  map<int32, int32> closed_per_score = 23;
+  map<int64, int64> time_per_score = 17;
+  map<int64, int64> total_per_score = 18;
+  map<int64, int64> success_per_score = 19;
+  map<int64, int64> failed_per_score = 20;
+  map<int64, int64> unchanged_per_score = 21;
+  map<int64, int64> closed_per_score = 23;
 }

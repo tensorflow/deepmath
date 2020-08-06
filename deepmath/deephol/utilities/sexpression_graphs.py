@@ -1,41 +1,88 @@
 """Turn SExpressions into graphs and then into a tensorflow-digestible format."""
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
+from typing import Dict, Iterable, List, NewType, Optional, Set, Text, Tuple, Union
 import farmhash
 import six
-import tensorflow as tf
-from typing import Dict, Iterable, List, NewType, Optional, Set, Text
-from typing import Union
+import tensorflow.compat.v1 as tf
 from deepmath.deephol.utilities import sexpression_parser
-from deepmath.proof_assistant import proof_assistant_pb2
 
 NodeID = NewType('NodeID', int)  # for nodes in the S-expression graph
 
 
-def to_node_id(sexp: Text) -> NodeID:
+def _children_to_node_id(child_node_ids: List[NodeID]) -> NodeID:
+  """Computes the node ID given the IDs of its children.
+
+  Args:
+    child_node_ids: IDs for all the child nodes.
+
+  Returns:
+    The ID of the node.
+  """
+  assert child_node_ids
+  return NodeID(
+      farmhash.fingerprint64(' '.join(
+          [str(child_node_id) for child_node_id in child_node_ids])))
+
+
+def _without_children_to_node_id(sexp: Text) -> NodeID:
+  """Computes the node ID for a leaf node.
+
+  Args:
+    sexp: The text representation of the S-expression represented by the node.
+
+  Returns:
+    The ID of the node.
+  """
   return NodeID(farmhash.fingerprint64(sexp))
 
 
-def theorem_sexpression(theorem: proof_assistant_pb2.Theorem) -> Text:
-  """Converts theorem object to an S-expression."""
-  if theorem.tag == proof_assistant_pb2.Theorem.GOAL:
-    return '(g (%s) %s)' % (' '.join(theorem.hypotheses), theorem.conclusion)
-  if theorem.tag == proof_assistant_pb2.Theorem.THEOREM:
-    return '(h (%s) %s)' % (' '.join(theorem.hypotheses), theorem.conclusion)
-  if theorem.tag == proof_assistant_pb2.Theorem.DEFINITION:
-    if theorem.hypotheses:
-      raise ValueError('Detected definition with hypotheses.')
-    return '(d (%s) %s)' % (' '.join(
-        theorem.definition.constants), theorem.conclusion)
-  if theorem.tag == proof_assistant_pb2.Theorem.TYPE_DEFINITION:
-    if theorem.hypotheses:
-      raise ValueError('Detected type definition with hypotheses.')
-    return '(t %s %s)' % (theorem.type_definition.type_name, theorem.conclusion)
-  raise ValueError('Unknown theorem tag.')
+def _tree_to_node_id(root: sexpression_parser.SExpressionTreeNode) -> NodeID:
+  """Computes the node ID for an S-expression tree.
+
+  Args:
+    root: The root node of the S-expression tree.
+
+  Returns:
+    The ID of the node.
+  """
+  node = root  # type: Optional[sexpression_parser.SExpressionTreeNode]
+  child_node_id_stack = []  # type: List[List[NodeID]]
+  # Will hold the resulting NodeID for the entire S-expression.
+  child_node_id_stack.append([])
+  # Will hold NodeID values for each child of the root node.
+  child_node_id_stack.append([])
+  while node is not None:
+    if node.children:
+      next_child_index = len(child_node_id_stack[-1])
+      if next_child_index == len(node.children):
+        node_id = _children_to_node_id(child_node_id_stack[-1])
+        child_node_id_stack.pop()
+        child_node_id_stack[-1].append(node_id)
+        node = node.parent
+      else:
+        child_node_id_stack.append([])
+        node = node.children[next_child_index]
+    else:
+      node_id = NodeID(farmhash.fingerprint64(repr(node)))
+      child_node_id_stack.pop()
+      child_node_id_stack[-1].append(node_id)
+      node = node.parent
+  assert len(child_node_id_stack) == 1
+  assert len(child_node_id_stack[0]) == 1
+  return child_node_id_stack[0][0]
+
+
+def to_node_id(sexp: Text) -> NodeID:
+  """Computes the node ID for an S-expression.
+
+  Args:
+    sexp: The text of the S-expression.
+
+  Returns:
+    The ID of the node.
+  """
+  if not sexp:
+    return _without_children_to_node_id('')  # Allow empty nodes.
+  return _tree_to_node_id(sexpression_parser.to_tree(sexp))
 
 
 class SExpressionGraph(object):
@@ -59,55 +106,85 @@ class SExpressionGraph(object):
   def nodes(self) -> Iterable[NodeID]:
     return self.children.keys()
 
-  def __contains__(self, sexp: Text):
-    return to_node_id(sexp) in self.labels
-
   def __len__(self):
     """Returns the number of nodes in the DAG representation of the expr."""
     return len(self.labels)
 
-  def get_parents(self, sexp: Text) -> Set[NodeID]:
-    return self.parents[to_node_id(sexp)]
-
-  def get_children(self, sexp: Text) -> List[NodeID]:
-    return self.children[to_node_id(sexp)]
-
-  def get_label(self, sexp: Text) -> Optional[Text]:
-    return self.labels[to_node_id(sexp)]
-
-  def add_sexp(self,
-               sexp_source: Union[Text, proof_assistant_pb2.Theorem, Iterable[
-                   Union[Text, proof_assistant_pb2.Theorem]]]):
-    """Adds new S-expressions; can be Text, Theorems, or lists thereof."""
-    if (not isinstance(sexp_source, six.string_types) and
-        not isinstance(sexp_source, proof_assistant_pb2.Theorem)):
+  def add_sexp(self, sexp_source: Union[Text, Iterable[Text]]):
+    """Adds new S-expressions; can be Text, or list of Text."""
+    if not isinstance(sexp_source, six.string_types):
       for s in sexp_source:
         self.add_sexp(s)
       return
-    if isinstance(sexp_source, proof_assistant_pb2.Theorem):
-      sexp_source = theorem_sexpression(sexp_source)
     self._add_text_sexp(sexp_source)
 
   def _add_text_sexp(self, sexp: Text):
     """Add new nodes to the S-expression graph."""
-    if sexp in self:
-      if self.to_text(to_node_id(sexp)) != sexp:
-        tf.logging.fatal('Fingerprint collision in S-expression graph parser.')
+    if sexp:
+      self._add_tree_sexp(sexpression_parser.to_tree(sexp))
       return
-    children = sexpression_parser.children(sexp)
-    node_id = to_node_id(sexp)
+    # Allow empty nodes.
+    node_id = _without_children_to_node_id('')
     self.children[node_id] = []
     self.parents[node_id] = set()
-    self.labels[node_id] = None if children else sexp
-    for c in children:
-      self.add_sexp(c)
-      child_id = to_node_id(c)
-      self.children[node_id].append(child_id)
-      self.parents[child_id].add(node_id)
+    self.labels[node_id] = ''
+
+  def _add_node_via_node_ids(self, node_id: NodeID, label: Optional[Text],
+                             child_node_ids: List[NodeID]) -> None:
+    """Adds a new node to the graph with given children.
+
+    Args:
+      node_id: The ID of the node to be added.
+      label: An optional label for the node to be added.
+      child_node_ids: IDs of all the child nodes which are already in the graph.
+    """
+    if node_id in self.labels:
+      if (self.labels[node_id] != label or
+          self.children[node_id] != child_node_ids):
+        tf.logging.fatal('Fingerprint collision in S-expression graph parser.')
+      return
+    self.children[node_id] = []
+    self.parents[node_id] = set()
+    self.labels[node_id] = label
+    for child_node_id in child_node_ids:
+      self.children[node_id].append(child_node_id)
+      self.parents[child_node_id].add(node_id)
+
+  def _add_tree_sexp(self,
+                     root: sexpression_parser.SExpressionTreeNode) -> None:
+    """Adds new nodes for the given S-expression tree to the graph.
+
+    Args:
+      root: The root node of the S-expression tree.
+    """
+    node = root  # type: Optional[sexpression_parser.SExpressionTreeNode]
+    child_node_id_stack = []  # type: List[List[NodeID]]
+    # Will hold the NodeID for the entire S-expression.
+    child_node_id_stack.append([])
+    # Will hold NodeID values for each child of the root node.
+    child_node_id_stack.append([])
+    while node is not None:
+      if node.children:
+        next_child_index = len(child_node_id_stack[-1])
+        if next_child_index == len(node.children):
+          node_id = _children_to_node_id(child_node_id_stack[-1])
+          self._add_node_via_node_ids(node_id, None, child_node_id_stack[-1])
+          child_node_id_stack.pop()
+          child_node_id_stack[-1].append(node_id)
+          node = node.parent
+        else:
+          child_node_id_stack.append([])
+          node = node.children[next_child_index]
+      else:
+        node_id = _without_children_to_node_id(repr(node))
+        self._add_node_via_node_ids(node_id, repr(node), [])
+        child_node_id_stack.pop()
+        child_node_id_stack[-1].append(node_id)
+        node = node.parent
 
   def is_empty_string(self) -> bool:
     """Checks if the graph represents the empty string."""
-    return len(self.parents) == 1 and '' in self
+    return len(self.parents) == 1 and to_node_id('') in self.parents
 
   def is_leaf_node(self, node: NodeID) -> bool:
     return node in self.labels and self.labels[node] is not None
@@ -118,7 +195,9 @@ class SExpressionGraph(object):
       self.post_order(n, order=order, skip_first_child=skip_first_child)
     return order
 
-  def post_order(self, node: NodeID, order=None,
+  def post_order(self,
+                 node: NodeID,
+                 order=None,
                  skip_first_child=False) -> Dict[NodeID, int]:
     """Compute the unique post order for the given node.
 
@@ -198,6 +277,41 @@ class SExpressionGraph(object):
           worklist.append(c)
     return ''.join(tokens)
 
+  def to_token_arity_pair_list(self, root: NodeID) -> List[Tuple[Text, int]]:
+    """Reperesent the S-expression as a list of (token, arity)-pairs.
+
+    This representation is useful for representing the formulas uniquely
+    without parentheses in a way that the reconstruction of the formula
+    is straightforward algorithmically.
+
+    For example, (v (bool) x) will be represented as [('v', 3), ('bool', 1),
+      ('x', 0)]
+    For each token that has an opening parenthesis in the left, the arity counts
+    the number of top-level subexpressions within that parenthesis.
+
+    Args:
+      root: NodeId of the root node of the graph representing the S-expression.
+
+    Returns:
+      A list of (token, arity) pairs that represents the s-expression in the
+      following way: arity is zero for any token that does not have an opening
+      parenthesis to the left of the token. If a token had an opening
+      parenthesis, then the arity field for the token is the number of child
+      nodes in the parenthesis starting with that token.
+    """
+    tokens = []
+    worklist = [(root, 0)]  # contains (node_id, arity) pairs.
+    while worklist:
+      node_id, arity = worklist.pop()  # pops the last item
+      if self.is_leaf_node(node_id):
+        tokens.append((self.labels[node_id], arity))
+      else:
+        children = self.children[node_id]
+        for c in children[1:][::-1]:
+          worklist.append((c, 0))
+        worklist.append((children[0], len(children)))
+    return tokens
+
   # TODO(mrabe): maybe introduce field maintaining the list of roots?
   def roots(self):
     """Returns all nodes without parents; sorted by hash value."""
@@ -240,3 +354,42 @@ class SExpressionGraph(object):
         self.is_variable(p) and self.children[p][2] == node
         for p in self.parents[node]
     ])
+
+
+def token_arity_pairs_to_sexpr(pairs: List[Tuple[Text, int]]) -> List[Text]:
+  """Reconstruct the s-expression from its (token, arity) representation.
+
+  Cf. SExpressionGraph.to_token_arity_pair_list method. Given a
+  representation of the SExpression in (token, arity)-list format, this
+  method recovers the list of tokens of the standard textual representation
+  of the expression
+
+  Args:
+    pairs: List of (token, arity) pairs of the expression.
+
+  Returns:
+    A list of tokens (including parenthesis) for the S-expression.
+    the text of the s-expression can be recovered by using joining the
+    output using space and replacing repeated white-spaces and removing
+    white-spaces between parentheses.
+  """
+  output = []
+  stack = []
+  for t, arity in pairs:
+    if arity > 0:
+      output.append('(')
+      output.append(t)
+      stack.append(arity)
+    else:
+      output.append(t)
+    if stack:
+      assert stack[-1] > 0
+      stack[-1] -= 1
+    while stack and stack[-1] == 0:
+      output.append(')')
+      stack.pop()
+      if stack:
+        assert stack[-1] > 0
+        stack[-1] -= 1
+  assert not stack
+  return output

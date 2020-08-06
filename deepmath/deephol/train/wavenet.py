@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Wavenet layers."""
+import tensorflow.compat.v1 as tf
+from tensorflow.contrib import layers as contrib_layers
+from tensorflow.contrib import slim as contrib_slim
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
-
-layers = tf.contrib.layers
-slim = tf.contrib.slim
+layers = contrib_layers
+slim = contrib_slim
 
 
 def wavenet_layer(inp,
@@ -119,7 +116,7 @@ def wavenet_block(net,
     input_shape = tf.shape(net)
     if keep_prob < 1.0:
       inp_shape = tf.shape(net)
-      noise_shape=(inp_shape[0], 1, inp_shape[2], inp_shape[3])
+      noise_shape = (inp_shape[0], 1, inp_shape[2], inp_shape[3])
       net = tf.nn.dropout(
           net,
           rate=(1.0 - keep_prob),

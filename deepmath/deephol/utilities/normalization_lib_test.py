@@ -1,11 +1,7 @@
 """Tests for deepmath.deephol.normalization_lib."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+from deepmath.deephol import theorem_fingerprint
 from deepmath.deephol.utilities import normalization_lib
 from deepmath.proof_assistant import proof_assistant_pb2
 
@@ -14,12 +10,14 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
 
   def test_normalize_trivial(self):
     theorem = proof_assistant_pb2.Theorem(conclusion='(does not contain types)')
+    theorem.fingerprint = theorem_fingerprint.Fingerprint(theorem)
     self.assertEqual(normalization_lib.normalize(theorem), theorem)
 
   def test_normalize_single_type(self):
     theorem = proof_assistant_pb2.Theorem(
         conclusion='(does contain type ?1234)')
     expected = proof_assistant_pb2.Theorem(conclusion='(does contain type ?0)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   def test_normalize_multiple_occurrences(self):
@@ -27,6 +25,7 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
         conclusion='(does contain types ?1234 and ?1234)')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?0)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   def test_normalize_multiple_types(self):
@@ -34,6 +33,7 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
         conclusion='(does contain types ?1234 and ?34598734958)')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?1)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   def test_normalize_multiple_types_flipped(self):
@@ -41,45 +41,96 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
         conclusion='(does contain types ?34598734958 and ?1234)')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?1)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   def test_normalize_with_hypotheses(self):
+    hypothesis = '(and type ?1234)'
     theorem = proof_assistant_pb2.Theorem(
-        conclusion='(does contain types ?34598734958 and ?1234)')
-    theorem.hypotheses.extend(['(and type ?1234)'])
+        conclusion='(does contain types ?34598734958 and ?1234)',
+        hypotheses=[hypothesis])
+    theorem.fingerprint = theorem_fingerprint.Fingerprint(theorem)
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?1)')
     expected.hypotheses.extend(['(and type ?1)'])
-    normalized = normalization_lib.normalize(theorem, consider_hypotheses=True)
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
+    normalized = normalization_lib.normalize(theorem)
     self.assertEqual(normalized.hypotheses[0], expected.hypotheses[0])
     self.assertEqual(normalized.conclusion, expected.conclusion)
+    self.assertEqual(normalized.fingerprint, expected.fingerprint)
+    self.assertNotEqual(theorem.fingerprint, normalized.fingerprint)
+    # hypotheses untouched as not changed inplace
+    self.assertEqual(theorem.hypotheses[0], hypothesis)
+
+  def test_normalize_with_assumptions(self):
+    assumption = proof_assistant_pb2.Theorem(
+        conclusion='(assumption ?1234)',
+        tag=proof_assistant_pb2.Theorem.THEOREM)
+    theorem = proof_assistant_pb2.Theorem(
+        conclusion='(does contain type ?1234)', assumptions=[assumption])
+    expected_assumption = proof_assistant_pb2.Theorem(
+        conclusion='(assumption ?0)',
+        tag=proof_assistant_pb2.Theorem.THEOREM,
+        fingerprint=2670622883811244116)
+    expected = proof_assistant_pb2.Theorem(
+        conclusion='(does contain type ?0)', assumptions=[expected_assumption])
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
+    self.assertEqual(normalization_lib.normalize(theorem), expected)
+    # assumptions untouched as not changed inplace
+    self.assertEqual(theorem.assumptions[0].conclusion, '(assumption ?1234)')
 
   def test_normalize_with_hypotheses_different_types(self):
     theorem = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?34598734958 and ?1234)')
     theorem.hypotheses.extend(['(and type ?122143)'])
+    theorem.fingerprint = theorem_fingerprint.Fingerprint(theorem)
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?1)')
     expected.hypotheses.extend(['(and type ?2)'])
-    normalized = normalization_lib.normalize(theorem, consider_hypotheses=True)
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
+    normalized = normalization_lib.normalize(theorem)
     self.assertEqual(normalized.conclusion, expected.conclusion)
     self.assertEqual(normalized.hypotheses[0], expected.hypotheses[0])
+    self.assertEqual(normalized.fingerprint, expected.fingerprint)
+    self.assertNotEqual(theorem.fingerprint, normalized.fingerprint)
 
-  def test_normalize_ignoring_hypotheses(self):
+  def test_normalize_retains_tag_split(self):
+    thm_definition = proof_assistant_pb2.Theorem(
+        conclusion='(does contain types ?34598734958 and ?1234)',
+        training_split=proof_assistant_pb2.Theorem.TESTING,
+        tag=proof_assistant_pb2.Theorem.DEFINITION)
+    thm_definition.fingerprint = theorem_fingerprint.Fingerprint(thm_definition)
+    expected = proof_assistant_pb2.Theorem(
+        conclusion='(does contain types ?0 and ?1)',
+        training_split=proof_assistant_pb2.Theorem.TESTING,
+        tag=proof_assistant_pb2.Theorem.DEFINITION)
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
+    normalized = normalization_lib.normalize(thm_definition)
+    self.assertEqual(normalized.conclusion, expected.conclusion)
+    self.assertEqual(normalized.training_split, expected.training_split)
+    self.assertEqual(normalized.tag, expected.tag)
+    self.assertEqual(normalized.fingerprint, expected.fingerprint)
+    self.assertNotEqual(thm_definition.fingerprint, normalized.fingerprint)
+
+  def test_normalize_inplace(self):
     theorem = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?34598734958 and ?1234)')
-    theorem.hypotheses.extend(['(and type ?122143)'])
+    old_fingerprint = theorem_fingerprint.Fingerprint(theorem)
+    theorem.fingerprint = old_fingerprint
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain types ?0 and ?1)')
-    normalized = normalization_lib.normalize(theorem, consider_hypotheses=False)
-    self.assertEqual(normalized.conclusion, expected.conclusion)
-    self.assertEqual(normalized.hypotheses, expected.hypotheses)
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
+    normalization_lib.normalize_inplace(theorem)
+    self.assertEqual(theorem.conclusion, expected.conclusion)
+    self.assertEqual(theorem.fingerprint, expected.fingerprint)
+    self.assertNotEqual(theorem.fingerprint, old_fingerprint)
 
   def test_single_genpvar(self):
     theorem = proof_assistant_pb2.Theorem(
         conclusion='(l (v type GEN%PVAR%123) (v type GEN%PVAR%123))')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(l (v type GEN%PVAR%0) (v type GEN%PVAR%0))')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(
         normalization_lib.normalize_genpvars(theorem.conclusion),
         expected.conclusion)
@@ -136,6 +187,7 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
         conclusion='(does contain ?123 but ignores ? quant)')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain ?0 but ignores ? quant)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   def test_gen_exists_exactly_one_quantifier(self):
@@ -143,6 +195,7 @@ class NormalizedFingerprintLibTest(parameterized.TestCase):
         conclusion='(does contain ?123 but ignores ?! quant)')
     expected = proof_assistant_pb2.Theorem(
         conclusion='(does contain ?0 but ignores ?! quant)')
+    expected.fingerprint = theorem_fingerprint.Fingerprint(expected)
     self.assertEqual(normalization_lib.normalize(theorem), expected)
 
   @parameterized.named_parameters(

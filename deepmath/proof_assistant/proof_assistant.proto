@@ -43,8 +43,10 @@ message Theorem {
   }
   optional string name = 4;
 
-  // Hypotheses must be strings that represent theorems.
-  // Currently only goals (tag = GOAL) are allowed to have hypotheses.
+  // Hypotheses may only be used by THEOREMs, while GOALs should use the
+  // assumptions field.
+  // Note that old data may have GOALs with hypotheses. In this case, each
+  // string stores a term 'x' that represents a theorem 'x |- x'.
   repeated string hypotheses = 1;
 
   // Conclusion is a string representing a term.
@@ -77,6 +79,14 @@ message Theorem {
   // Fingerprint of the goal that resulted in this theorem. Used for exporting
   // proofs.
   optional int64 goal_fingerprint = 12;
+
+  // Protos with tag=GOAL can have assumptions. Cannot also have hypotheses.
+  // Assumptions must not have GOAL tag themselves.
+  repeated Theorem assumptions = 13;
+
+  // This field is used to reference assumptions of goals when this theorem
+  // occurs in a parameter list of a tactic application.
+  optional int64 assumption_index = 14;
 }
 
 message GoalList {
@@ -93,6 +103,19 @@ message ApplyTacticRequest {
 message ApplyTacticResponse {
   oneof result {
     GoalList goals = 1;
+    string error = 2;
+  }
+}
+
+message ApplyRuleRequest {
+  // Fully formed rule application, including all parameters.
+  optional string rule = 1;
+  optional int64 timeout_ms = 3 [default = 5000];
+}
+
+message ApplyRuleResponse {
+  oneof result {
+    Theorem theorem = 1;
     string error = 2;
   }
 }
@@ -194,6 +217,12 @@ message ProverTask {
   optional PremiseSet premise_set = 1;
   // Goals to be proved.
   repeated Theorem goals = 2;
+  // Target goal stack for prover environment. The prover will try to do one
+  // of two things:
+  //   1. Prove the proof (empty goal stack).
+  //   2. Try to make goal stack match targets exactly.
+  // Note: We currently only support at most one target.
+  repeated Theorem targets = 3;
 }
 
 // A list of prover tasks. Allows to have a single prover task with all the

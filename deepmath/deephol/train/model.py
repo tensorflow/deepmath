@@ -1,13 +1,9 @@
 """Instantiates the architectures according to params to obtain a model."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from deepmath.deephol.train import extractor
 from deepmath.deephol.train import utils
+from tensorflow.contrib import opt as contrib_opt
 
 FLAGS = tf.flags.FLAGS
 
@@ -59,7 +55,7 @@ def model_fn(features, labels, mode, params, config):
     # Polyak averaging improves predictions at eval time.
     opt = tf.train.AdamOptimizer(learning_rate)
     if params.variable_av_decay > 0:
-      opt = tf.contrib.opt.MovingAverageOptimizer(
+      opt = contrib_opt.MovingAverageOptimizer(
           opt, average_decay=params.variable_av_decay)
     train_op = opt.minimize(loss, global_step=global_step)
     if params.variable_av_decay > 0:

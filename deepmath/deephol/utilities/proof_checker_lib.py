@@ -2,17 +2,12 @@
 
 Processes multiple proof logs, but can generate at most one proof per theorem.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
-import tensorflow as tf
 from typing import Dict, Iterable, List, Text
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import deephol_pb2
-from deepmath.deephol.utilities import proof_analysis
+from deepmath.deephol import tactic_utils
 from deepmath.deephol import theorem_fingerprint
+from deepmath.deephol.utilities import proof_analysis
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
@@ -28,53 +23,8 @@ def _tactic_string_to_ocaml(tactic_string: Text) -> Text:
   return 'Parse_tactic.parse ' + put_in_quotes(tactic_string)
 
 
-def tactic_application_to_string(t_app: deephol_pb2.TacticApplication) -> Text:
-  """Generate tactic strings.
-
-  Args:
-    t_app: TacticApplication proto
-
-  Returns:
-    tactic string; to be parsed by third_party/hol_light/parse_tactic.ml
-
-  Raises:
-    ProofFailedError: When invariants of the tactic application are not met.
-  """
-  tactic_str = str(t_app.tactic)
-  for i, param in enumerate(t_app.parameters):
-    tactic_str += ' '
-    if param.parameter_type == deephol_pb2.Tactic.UNKNOWN:
-      if not param.unknown:
-        raise ProofFailedError(
-            'No (or empty) parameter UNKNOWN given for parameter '
-            'index %d of tactic %s' % (i, t_app.tactic))
-      tactic_str += str(param.unknown)
-    elif param.parameter_type == deephol_pb2.Tactic.TERM:
-      if not param.term:
-        raise ProofFailedError('Tactic %s expected term at parameter index %d' %
-                               (t_app.tactic, i))
-      tactic_str += str(param.term)
-    elif param.parameter_type == deephol_pb2.Tactic.THEOREM:
-      if not param.theorems or len(param.theorems) != 1:
-        raise ProofFailedError(
-            'Tactic %s expected single theorem at parameter index %d' %
-            (t_app.tactic, i))
-      tactic_str += theorem_fingerprint.ToTacticArgument(param.theorems[0])
-    elif param.parameter_type == deephol_pb2.Tactic.THEOREM_LIST:
-      if not param.theorems:
-        tactic_str += '[ ]'
-      else:
-        tactic_str += str('[ %s ]' % ' ; '.join([
-            theorem_fingerprint.ToTacticArgument(thm) for thm in param.theorems
-        ]))
-    else:
-      raise ProofFailedError('Unsupported param type: %s' %
-                             str(param.parameter_type))
-  return tactic_str
-
-
-def proof_log_as_dict(log: deephol_pb2.ProofLog
-                     ) -> Dict[int, deephol_pb2.ProofNode]:
+def proof_log_as_dict(
+    log: deephol_pb2.ProofLog) -> Dict[int, deephol_pb2.ProofNode]:
   """Turns proof log into a dictionary."""
   d = {}
   for node in log.nodes:
@@ -85,17 +35,16 @@ def proof_log_as_dict(log: deephol_pb2.ProofLog
   return d
 
 
-def proof_linearization(proof_log: deephol_pb2.ProofLog
-                       ) -> List[deephol_pb2.TacticApplication]:
+def proof_linearization(
+    proof_log: deephol_pb2.ProofLog) -> List[deephol_pb2.TacticApplication]:
   """Turns a proof into a list of tactic applications."""
   if not proof_log.HasField('theorem_in_database'):
     raise ValueError('Proof log requires field theorem_in_database')
   node_dict = proof_log_as_dict(proof_log)
   fingerprint = theorem_fingerprint.Fingerprint(proof_log.theorem_in_database)
   if fingerprint not in node_dict:
-    raise ValueError(
-        'Fingerprint of proof_log.theorem_in_database missing in the proof log.'
-    )
+    raise ProofFailedError('Fingerprint of proof_log.theorem_in_database '
+                           'missing in the proof log. Cannot generate a proof.')
 
   # Compute a linearization of the tactic applications in left-first order.
   tactics = []
@@ -149,8 +98,11 @@ def ocaml_proof(proof_log: deephol_pb2.ProofLog) -> List[Text]:
     lines.append('')
 
   tactics = proof_linearization(proof_log)
+  if not tactics:
+    raise ProofFailedError('Found empty proof - skipping this theorem.')
   ocaml_parsed_tactics = [
-      _tactic_string_to_ocaml(tactic_application_to_string(tactic))
+      _tactic_string_to_ocaml(
+          tactic_utils.tactic_application_to_string(tactic))
       for tactic in tactics
   ]
   proof = ' THEN\n    '.join(ocaml_parsed_tactics)
@@ -158,8 +110,12 @@ def ocaml_proof(proof_log: deephol_pb2.ProofLog) -> List[Text]:
   wrapped_proof = 'fun () ->\n    decode_goal [%s] "%s",\n    %s' % (
       '; '.join(quoted_hypotheses), theorem.conclusion, proof)
   in_core = 'true' if 'core' in theorem.library_tag else 'false'
+  if (theorem.goal_fingerprint and
+      theorem.goal_fingerprint != theorem.fingerprint):
+    tf.logging.error('goal_fingerprint %d is not the same as fingerprint %d',
+                     theorem.goal_fingerprint, theorem.fingerprint)
   lines.append('register_proof %d (\n  %s) %s;;' %
-               (theorem.goal_fingerprint, wrapped_proof, in_core))
+               (theorem.fingerprint, wrapped_proof, in_core))
   return lines
 
 
@@ -213,12 +169,10 @@ def verify(proof_logs: Iterable[deephol_pb2.ProofLog],
       continue
     proof_logs_with_closed_proofs += 1
 
-    # Ensure consistency of log.nodes[0] and log.theorem_in_database
-    node0_is_thm = log.nodes[0].goal.tag == proof_assistant_pb2.Theorem.THEOREM
-    if not node0_is_thm and not log.HasField('theorem_in_database'):
-      raise ValueError('Not sure which theorem this log proves.')
+    # Ensure log.theorem_in_database is populated
     if not log.HasField('theorem_in_database'):
       log.theorem_in_database.CopyFrom(log.nodes[0].goal)
+      log.theorem_in_database.tag = proof_assistant_pb2.Theorem.THEOREM
 
     # Start the actual loop logic
     fingerprint = theorem_fingerprint.Fingerprint(log.theorem_in_database)
@@ -275,13 +229,17 @@ def verify(proof_logs: Iterable[deephol_pb2.ProofLog],
     tf.logging.warning('Proofs in proof logs that were ignored: %d',
                        duplicate_proofs)
   if missing_in_database:
-    tf.logging.warning(
-        'Found a proof for a theorem that is not in the theorem database',
+    tf.logging.error(
+        'Found a proof for a theorem that is not in the theorem database: %d',
         missing_in_database)
-  if successful_proofs + failed_proofs != theorems_with_closed_proofs:
+  if (successful_proofs + failed_proofs + missing_in_database !=
+      theorems_with_closed_proofs):
     raise ValueError('Internal error in the proof checker. Number of theorems '
                      'checked did not match the proof log.')
-  if successful_proofs < theorems_with_closed_proofs or failed_proofs > 0:
-    tf.logging.warning('Proof log could NOT be verified.')
+  if (successful_proofs < theorems_with_closed_proofs or failed_proofs or
+      missing_in_database):
+    tf.logging.warning('Proof log could NOT be translated to OCAML.')
+  else:
+    tf.logging.warning('Proof log successfully translated to OCAML.')
 
   return '\n'.join(lines)

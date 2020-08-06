@@ -1,10 +1,6 @@
 """Utility functions for Holparam code."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+from tensorflow.contrib import lookup as contrib_lookup
 
 
 class Params(dict):
@@ -20,8 +16,8 @@ def vocab_table_from_file(filename, reverse=False):
     keys = [s.strip() for s in f.readlines()]
     values = tf.range(len(keys), dtype=tf.int64)
     if not reverse:
-      init = tf.contrib.lookup.KeyValueTensorInitializer(keys, values)
-      return tf.contrib.lookup.HashTable(init, 1)
+      init = contrib_lookup.KeyValueTensorInitializer(keys, values)
+      return contrib_lookup.HashTable(init, 1)
     else:
-      init = tf.contrib.lookup.KeyValueTensorInitializer(values, keys)
-      return tf.contrib.lookup.HashTable(init, '')
+      init = contrib_lookup.KeyValueTensorInitializer(values, keys)
+      return contrib_lookup.HashTable(init, '')

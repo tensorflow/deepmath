@@ -1,9 +1,9 @@
-FROM l.gcr.io/google/bazel:latest
+FROM l.gcr.io/google/bazel:0.21.0
 WORKDIR /home
 
 # Dependencies.
 RUN apt-get update && apt-get install -y python3-pip python-dev libc-ares-dev
-RUN pip3 install h5py six numpy wheel mock pyfarmhash grpcio
+RUN pip3 install h5py six numpy scipy wheel mock pyfarmhash grpcio
 RUN pip3 install keras_applications==1.0.6 keras_preprocessing==1.0.5 --no-deps
 ENV \
   PYTHON_BIN_PATH=/usr/bin/python3 \
@@ -32,8 +32,14 @@ RUN cd deepmath/tensorflow && \
 RUN cd deepmath && \
   bazel build -c opt //deepmath/deephol:main --define grpc_no_ares=true --python_path=$PYTHON_BIN_PATH
 
+# Build proof checker that generates OCaml files from proof logs:
+RUN cd deepmath && \
+  bazel build -c opt //deepmath/deephol/utilities:proof_checker \
+    --define grpc_no_ares=true --python_path=$PYTHON_BIN_PATH
+
 # Make a copy without symlinks.
 RUN cp -R -L /home/deepmath/bazel-bin/deepmath/deephol/main.runfiles /home/runfiles
+RUN cp -R -L /home/deepmath/bazel-bin/deepmath/deephol/utilities/proof_checker.runfiles /home/proof_checker_runfiles
 
 ### COPY
 FROM python:3
@@ -42,6 +48,11 @@ COPY --from=0 /usr/local/lib/python3.5/dist-packages /usr/local/lib/python3.5/di
 COPY --from=0 /home/deepmath/bazel-bin/deepmath/deephol/main .
 COPY --from=0 /home/runfiles main.runfiles/
 COPY --from=0 /home/deepmath/bazel-bin/deepmath/deephol/main.runfiles_manifest .
+
+COPY --from=0 /home/deepmath/bazel-bin/deepmath/deephol/utilities/proof_checker .
+COPY --from=0 /home/proof_checker_runfiles proof_checker.runfiles/
+COPY --from=0 /home/deepmath/bazel-bin/deepmath/deephol/utilities/proof_checker.runfiles_manifest .
+
 ENV \
   PYTHON_BIN_PATH=/usr/bin/python3 \
   PYTHON_LIB_PATH=/usr/local/lib/python3.5/dist-packages

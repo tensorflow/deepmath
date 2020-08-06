@@ -2,38 +2,31 @@
 
 These functions are useful for unit testing ProofLog related code.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
 from typing import List
 from deepmath.deephol import deephol_pb2
+from deepmath.deephol import theorem_utils
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
-def make_theorem(i: int, theorem: bool = True) -> proof_assistant_pb2.Theorem:
-  """Make a theorem or goal with content generated from the integer.
+def make_goal(i: int) -> proof_assistant_pb2.Theorem:
+  """Make a goal with content generated from the integer.
 
   Args:
-    i: Index to uniquely identify the theorem.
-    theorem: If true, then it will be tagged as a theorem, otherwise a goal.
+    i: Index to uniquely identify the goal.
 
   Returns:
     The generated proof_assistant_pb2.Theorem object.
   """
-  if theorem:
-    tag = proof_assistant_pb2.Theorem.THEOREM
-  else:
-    tag = proof_assistant_pb2.Theorem.GOAL
   return proof_assistant_pb2.Theorem(
-      hypotheses=['h'], conclusion='c%d' % i, tag=tag)
+      assumptions=[theorem_utils.assume_term('h')],
+      conclusion='c%d' % i,
+      tag=proof_assistant_pb2.Theorem.GOAL)
 
 
 def add_node(log: deephol_pb2.ProofLog,
              proofs: List[List[int]],
              proved: bool = True,
-             theorem: bool = False,
+             root_goal: bool = False,
              prediction_time=37):
   """Add a new mock node to the proof log.
 
@@ -42,7 +35,7 @@ def add_node(log: deephol_pb2.ProofLog,
     proofs: Lists of lists of node indices representing the proof attempts
       (TacticApplications).
     proved: If true, the node is to be marked as true.
-    theorem: If true, the node is marked as a theorem, otherwise a subgoal.
+    root_goal: If true, the node is marked as a root goal, otherwise a subgoal.
     prediction_time: The time the action generator used to generate predictions.
   """
   node_index = len(log.nodes)
@@ -52,16 +45,18 @@ def add_node(log: deephol_pb2.ProofLog,
 
   def make_tactic_application(proof):
     return deephol_pb2.TacticApplication(
-        subgoals=[make_theorem(i) for i in proof],
+        subgoals=[make_goal(i) for i in proof],
         closed=True,
         result=deephol_pb2.TacticApplication.SUCCESS)
 
   proofs = [make_tactic_application(proof) for proof in proofs]
+  goal = make_goal(node_index)
   log.nodes.add(
-      goal=make_theorem(node_index, theorem=theorem),
+      goal=goal,
       status=status,
       proofs=proofs,
-      action_generation_time_millisec=prediction_time)
+      action_generation_time_millisec=prediction_time,
+      root_goal=root_goal)
 
 
 def new_log(num_proofs: int = 1, time_spent: int = 10000):

@@ -3,13 +3,11 @@
 The most important function here is a utility that creates an acyclic subgraph
 of the proof graph that explains why a proof is correct.
 """
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-import tensorflow as tf
 from typing import List, Optional, Tuple, Text
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import deephol_pb2
+from deepmath.deephol import proof_search_tree
+from deepmath.deephol import to_sexpression
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
@@ -22,16 +20,11 @@ class GoalNotFoundError(Exception):
 
 
 def _thm_string(thm: proof_assistant_pb2.Theorem) -> Text:
-  """Turn theorem into a string for unique representation.
-
-  Args:
-    thm: Theorem to be turned into a string.
-
-  Returns:
-    string: Joined hypotheses and conclusion.
-  """
-  return '|:|'.join([str(hyp) for hyp in thm.hypotheses] +
-                    [str(thm.conclusion)])
+  """Turn theorem into a string for unique representation."""
+  if thm.tag == proof_assistant_pb2.Theorem.GOAL:
+    return to_sexpression.convert_goal(thm, False)
+  else:
+    return to_sexpression.convert_theorem(thm, False)
 
 
 class Node(object):
@@ -111,10 +104,88 @@ class Node(object):
         parent.update_closed(closed_nodes)
 
 
+def _find_reasons_with_targets(
+    proof_log: deephol_pb2.ProofLog
+) -> Optional[Tuple[List[Tuple[int, int, List[int]]], List[int]]]:
+  """Hack to enable extracting proofs in the presence of targets.
+
+  Args:
+    proof_log: The proof log from which to extract the proof.
+
+  Returns:
+    To comply with the type signature of find_reasons we return a tuple.
+    The first element of the represents the reasons, which do not make sense
+    here and are thus kept empty.
+  """
+  orig_root_node = None
+  orig_root_node_idx = None
+  for idx, node in enumerate(proof_log.nodes):
+    if node.root_goal:
+      if orig_root_node is not None:
+        raise ValueError('Multiple roots detected.')
+      orig_root_node = node
+      orig_root_node_idx = idx
+  if (not proof_log.nodes or not orig_root_node or
+      orig_root_node.status != deephol_pb2.ProofNode.PROVED):
+    return ([], [])
+
+  # Create the mapping that maps theorem representations to node index.
+  node_indices = {}
+  for i, node in enumerate(proof_log.nodes):
+    if node.status == deephol_pb2.ProofNode.PROVED:
+      node_string = _thm_string(node.goal)
+      if node_string in node_indices:
+        raise ValueError('Node occurs multiple times in the proof log: %s' %
+                         str(node))
+      node_indices[node_string] = i
+
+  # We need a proof search tree to test if we reached the goal specified in the
+  # target.
+  root_goal = proof_assistant_pb2.Theorem()
+  root_goal.CopyFrom(orig_root_node.goal)
+  for idx, assumption in enumerate(root_goal.assumptions):
+    assumption.assumption_index = idx  # to make tests work
+  tree = proof_search_tree.ProofSearchTree(None, root_goal,
+                                           proof_log.prover_task)
+  reasons = []
+  proof_node_indices = []
+  stack = [orig_root_node_idx]  # contains node indices of nodes in the proof.
+  while stack:
+    node_idx = stack.pop()
+    node = proof_log.nodes[node_idx]
+    proof_node_indices.append(node_idx)
+    if not tree.within_targets(node.goal):
+      found_successful_application = False
+      for app_idx, tactic_application in enumerate(node.proofs):
+        if tactic_application.closed:
+          subgoal_idxs = []
+          for sg in tactic_application.subgoals:
+            sg_string = _thm_string(sg)
+            if sg_string not in node_indices:
+              tf.logging.error('Subgoal of proof not in proof log.')
+              return None
+            subgoal_idxs.append(node_indices[sg_string])
+          for subgoal_idx in subgoal_idxs:
+            if subgoal_idx in proof_node_indices:
+              return None
+          stack.extend(subgoal_idxs)
+          reasons.append((node_idx, app_idx, subgoal_idxs))
+          found_successful_application = True
+          break  # need only one closed tactic application
+      if not found_successful_application:
+        tf.logging.error('No successful tactic application found for node: %s',
+                         str(node))
+        return None
+  return reasons, proof_node_indices
+
+
 def find_reasons(
     proof_log: deephol_pb2.ProofLog
 ) -> Optional[Tuple[List[Tuple[int, int, List[int]]], List[int]]]:
-  """Find the real reasons why the root node of a proof is is proved.
+  """Find the real reasons why the root node of a proof is proved.
+
+    TODO(mrabe): Make this function compatible with setting a target goal in the
+    prover task.
 
     This function assumes that the root node is closed, otherwise an
     error message is displayed and None is returned.
@@ -133,6 +204,13 @@ def find_reasons(
     contribute to the above proof. This list starts with the theorem nodes and
     the subgoals always come after the nodes they prove.
   """
+  if proof_log.prover_task.targets:
+    try:
+      return _find_reasons_with_targets(proof_log)
+    except Exception as e:  # pylint: disable=broad-except
+      tf.logging.error('Failed to extract proof from log with targets: %s', e)
+      return None
+
   # A map that maps the string representation of proof_assistant_pb2.Theorems to
   # their nodes. It stores only those nodes that are marked to be proved.
   thm_node = {}
@@ -158,7 +236,7 @@ def find_reasons(
         continue
       n = Node(node, i)
       thm_node[ths] = n
-      if node.goal.tag == proof_assistant_pb2.Theorem.THEOREM:
+      if node.root_goal:
         to_process.append(n)
   if not to_process:
     # We don't have anything to prove, so we just return an empty reasons and
@@ -207,8 +285,8 @@ def find_reasons(
       tf.logging.error('Could not find subgoal "%s" among proved nodes',
                        xcp.goal)
       return None
-    reasons.append((node.index, node.true_proof,
-                    [subgoal.index for subgoal in subgoals]))
+    reasons.append(
+        (node.index, node.true_proof, [subgoal.index for subgoal in subgoals]))
     for subgoal in subgoals:
       if not subgoal.processed:
         subgoal.processed = True
@@ -233,8 +311,8 @@ def _keep_tac_app(node: deephol_pb2.ProofNode, i: int) -> deephol_pb2.ProofNode:
   return node
 
 
-def extract_proof(proof_log: deephol_pb2.ProofLog
-                 ) -> Optional[deephol_pb2.ProofLog]:
+def extract_proof(
+    proof_log: deephol_pb2.ProofLog) -> Optional[deephol_pb2.ProofLog]:
   """Reduce the proof into a simply checkable format.
 
   The utility of this function is to prune the proof to an acyclic
@@ -252,19 +330,48 @@ def extract_proof(proof_log: deephol_pb2.ProofLog
     Theorem nodes.
   """
   if not proof_log.nodes:
-    return proof_log
+    tf.logging.info('exract_proof called on empty proof log.')
+    return None
+  # check for existence of root goal
+  has_root_goal = False
+  for node in proof_log.nodes:
+    if node.root_goal:
+      has_root_goal = True
+      break
+  if not has_root_goal:
+    tf.logging.error('Need root goal to extract a proof.')
+    return None
+
   result = find_reasons(proof_log)
   if result is None:
+    tf.logging.info('Proof extraction did not find a proof (None).')
     return None
   (reasons, _) = result
-  new_log = deephol_pb2.ProofLog(
-      error_message=proof_log.error_message,
-      num_proofs=proof_log.num_proofs,
-      prover_options=proof_log.prover_options,
-      time_spent=proof_log.time_spent,
-      theorem_in_database=proof_log.theorem_in_database)
-  new_log.nodes.extend([
-      _keep_tac_app(proof_log.nodes[node_index], tac_app_index)
+  if not reasons:
+    tf.logging.info('Proof extraction did not find a proof (empty).')
+    return None
+  new_log = deephol_pb2.ProofLog()
+  new_log.CopyFrom(proof_log)
+  nodes_to_keep = [
+      _keep_tac_app(new_log.nodes[node_index], tac_app_index)
       for node_index, tac_app_index, _ in reasons
-  ])
+  ]
+  del new_log.nodes[:]
+  new_log.nodes.extend(nodes_to_keep)
   return new_log
+
+
+def check_extracted_proof_assumptions(
+    proof_log: deephol_pb2.ProofLog) -> Optional[Text]:
+  """Returns violations of assumptions about extracted proofs."""
+  if not proof_log.nodes:
+    return 'Proof is empty'
+  if not proof_log.nodes[0].root_goal:
+    return 'First node expected to be the root goal.'
+  for node in proof_log.nodes:
+    if len(node.proofs) != 1:
+      return 'Expected exactly one proof step for node: %s' % str(node)
+    if not node.proofs[0].closed:
+      return 'Node not closed'
+    if node.proofs[0].result != deephol_pb2.TacticApplication.SUCCESS:
+      return 'Proof contained unsuccessful tactic application: %s' % str(node)

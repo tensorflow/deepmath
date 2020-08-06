@@ -1,13 +1,7 @@
 """Simple functions for checking and modifying theorem databases."""
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
-
 import sys
-import tensorflow as tf
 from typing import Callable, List, Text
+import tensorflow.compat.v1 as tf
 from deepmath.deephol import theorem_fingerprint
 from deepmath.deephol.utilities import sexpression_graphs as sexpr
 from deepmath.proof_assistant import proof_assistant_pb2
@@ -82,13 +76,21 @@ def normalize_genpvars(expr: Text):
   return expr_dag.to_text(roots[0])
 
 
-def normalize(theorem: proof_assistant_pb2.Theorem,
-              consider_hypotheses=False) -> proof_assistant_pb2.Theorem:
-  """Renames types and certain variables to more unique names."""
+def _words_no_parens(s: Text) -> List[Text]:
+  """Returns the list of words without parentheses."""
+  return s.replace('(', ' ').replace(')', ' ').split()
+
+
+def _normalization_function(theorem: proof_assistant_pb2.Theorem):
+  """Returns a function that normalizes terms within the given theorem."""
   terms = [theorem.conclusion]
-  if consider_hypotheses:
-    terms += [h for h in theorem.hypotheses if h]
-  words = ' '.join(terms).replace('(', ' ').replace(')', ' ').split()
+  terms.extend(theorem.hypotheses)
+  for a in theorem.assumptions:
+    terms.append(a.conclusion)
+    terms.extend(a.hypotheses)
+  words = []
+  for t in terms:
+    words.extend(_words_no_parens(t))
 
   # Extract type numbers
   type_nums = []
@@ -109,18 +111,57 @@ def normalize(theorem: proof_assistant_pb2.Theorem,
       s = normalize_genpvars(s)
     return s
 
+  return renaming
+
+
+def normalize(
+    theorem: proof_assistant_pb2.Theorem) -> proof_assistant_pb2.Theorem:
+  """Renames types and certain variables to more unique names.
+
+  Args:
+    theorem: Theorem proto that we want to normalize.
+
+  Returns:
+    A normalized copy of the input Theorem proto.
+  """
+  renaming = _normalization_function(theorem)
+
+  def rename_conclusion_and_hypotheses(theorem):
+    theorem.conclusion = renaming(theorem.conclusion)
+    for idx, h in enumerate(theorem.hypotheses):
+      theorem.hypotheses[idx] = renaming(h)
+
   unique_rep = proof_assistant_pb2.Theorem()
-  unique_rep.conclusion = renaming(theorem.conclusion)
-  if consider_hypotheses:
-    unique_rep.hypotheses.extend([renaming(h) for h in theorem.hypotheses])
-  if theorem.HasField('fingerprint'):
-    theorem.ClearField('fingerprint')
-    theorem.fingerprint = theorem_fingerprint.Fingerprint(theorem)
+  unique_rep.CopyFrom(theorem)  # deep-copy hypotheses, tag, split info etc.
+  rename_conclusion_and_hypotheses(unique_rep)
+  for a in unique_rep.assumptions:
+    rename_conclusion_and_hypotheses(a)
+
+  # we need to recompute the fingerprint since the conclusion and
+  # hypotheses may have been changed during normalization
+  for assum in unique_rep.assumptions:
+    assum.ClearField('fingerprint')
+    assum.fingerprint = theorem_fingerprint.Fingerprint(assum)
+  unique_rep.ClearField('fingerprint')
+  unique_rep.fingerprint = theorem_fingerprint.Fingerprint(unique_rep)
   return unique_rep
 
 
-def normalized_fingerprint(theorem: proof_assistant_pb2.Theorem,
-                           consider_hypotheses=False) -> int:
+def normalize_inplace(
+    theorem: proof_assistant_pb2.Theorem) -> proof_assistant_pb2.Theorem:
+  """Normalizes an input Theorem proto in place.
+
+  Args:
+    theorem: Theorem proto that we want to normalize.
+
+  Returns:
+    The input Theorem proto modified to be normalized.
+  """
+  theorem.CopyFrom(normalize(theorem))
+  return theorem
+
+
+def normalized_fingerprint(theorem: proof_assistant_pb2.Theorem) -> int:
   """Turn theorems into a more unique representation and compute the fingeprint.
 
   Map types of the form ?XXXX to something more unique: Use ordering of the type
@@ -129,13 +170,11 @@ def normalized_fingerprint(theorem: proof_assistant_pb2.Theorem,
 
   Args:
     theorem: A theorem
-    consider_hypotheses: Compute normalized_fingerprint with hypotheses.
 
   Returns:
     The fingerprint of the normalized theorem
   """
-  return theorem_fingerprint.Fingerprint(
-      normalize(theorem, consider_hypotheses=consider_hypotheses))
+  return theorem_fingerprint.Fingerprint(normalize(theorem))
 
 
 def theorem_database_contains_duplicates(

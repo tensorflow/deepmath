@@ -1,19 +1,18 @@
 """Tests for deepmath.deephol.proof_checker.proof_checker_lib."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
+from absl.testing import parameterized
+import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
 from deepmath.deephol import deephol_pb2
+from deepmath.deephol import tactic_utils
 from deepmath.deephol.utilities import proof_checker_lib
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
-class ProofCheckerTest(tf.test.TestCase):
+class ProofCheckerTest(tf.test.TestCase, parameterized.TestCase):
 
   def setUp(self):
+    super(ProofCheckerTest, self).setUp()
     self.eq_refl_thm = proof_assistant_pb2.Theorem()
     text_format.Parse(
         'name: "EQ_REFL"'
@@ -88,7 +87,7 @@ class ProofCheckerTest(tf.test.TestCase):
         self.two_step_proof)
     self.assertLen(tactic_applications, 2)
     tactic_strings = [
-        proof_checker_lib.tactic_application_to_string(t_app)
+        tactic_utils.tactic_application_to_string(t_app)
         for t_app in tactic_applications
     ]
     self.assertEqual(tactic_strings, ['GEN_TAC', 'REFL_TAC'])
@@ -98,31 +97,9 @@ class ProofCheckerTest(tf.test.TestCase):
         self.proof_with_param)
     self.assertLen(tactic_applications, 1)
     tactic_strings = list(
-        map(proof_checker_lib.tactic_application_to_string,
-            tactic_applications))
+        map(tactic_utils.tactic_application_to_string, tactic_applications))
     self.assertEqual(tactic_strings, ['ACCEPT_TAC THM 3459657839204525272'])
 
-  def test_simple_tacticapplication(self):
-    app = deephol_pb2.TacticApplication()
-    text_format.Parse('tactic: "REFL_TAC"', app)
-    tactic_str = proof_checker_lib.tactic_application_to_string(app)
-    self.assertEqual(tactic_str, 'REFL_TAC')
-
-  def test_complex_tacticapplication(self):
-    app = deephol_pb2.TacticApplication()
-    text_format.Parse(
-        'tactic: "ACCEPT_TAC"'
-        'parameters {'
-        '  parameter_type: THEOREM'
-        '  theorems {'
-        '    conclusion: "(a (c (fun (fun A (bool)) (bool)) !) (l (v A x) '
-        '(a (a (c (fun A (fun A (bool))) =) (v A x)) (v A x))))"'
-        '    tag: THEOREM'
-        '    name: "EQ_REFL"'
-        '  }'
-        '}', app)
-    tactic_str = proof_checker_lib.tactic_application_to_string(app)
-    self.assertEqual(tactic_str, 'ACCEPT_TAC THM 3459657839204525272')
 
 if __name__ == '__main__':
   tf.test.main()

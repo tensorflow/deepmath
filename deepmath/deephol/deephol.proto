@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package deepmath_deephol;
 
+import "deepmath/deephol/utilities/deephol_stat.proto";
 import "deepmath/proof_assistant/proof_assistant.proto";
 
 message IntegerInterval {
@@ -17,7 +18,7 @@ message BFSMetaOptions {
   // Options for sampling option values for BFSOptions.
   // Each interval specifies a closed interval from which the
   // the option values are sampled with uniform probability.
-  // For the explanations of the inidividual options, see the
+  // For the explanations of the individual options, see the
   // option in BFSOptions with the same name.
   optional IntegerInterval max_top_suggestions = 1;
   optional IntegerInterval max_successful_branches = 2;
@@ -34,7 +35,7 @@ message BFSOptions {
   // applications per_node.
   optional int32 max_successful_branches = 2 [default = 2];
   // Maximum number of goals expanded during the search.
-  optional int32 max_explored_nodes = 3 [default = 200];
+  optional int32 max_explored_nodes = 3;
   // Minimum number of successful branches
   // Tactics will be tried until running out of tactics applications
   // or min_successful_branches is reached.
@@ -54,13 +55,106 @@ message ActionGeneratorOptions {
   // Use ASM_MESON_TAC [] with no parameters.
   optional bool asm_meson_no_params_only = 3 [default = false];
   // Probability with which to chose a random tactic instead of using the model.
-  optional float random_tactic_probability = 4 [default = 0.0];
+  // DEPRECATED: use dirichlet_noise_for_tactics instead.
+  optional float random_tactic_probability = 4
+      [default = 0.0, deprecated = true];
   // Number of theorem parameters to pick based on similarity (the number of
   // parameters vary depending on the interval). Total number of parameters is
   // still bounded by max_theorem_parameters.
   optional IntegerInterval num_similar_parameters = 5;
   // Bag of words based similar
   optional bool bag_of_words_similar = 6 [default = false];
+  // Bag of words similar - noise scale.
+  optional float tfidf_noise_scale = 12 [default = 0.0];
+  // Bag of words similar - weighting scheme.
+  //
+  // Let tf_{t,d} = term frequency of term t in document d.
+  // Let tfidf_{t,d} = wf_{t,d} idf_{t}.
+  //
+  // 0: wf_{t,d} = tf_{t,d}
+  // 1: wf_{t,d} = 1+log(tf_{t,d}) if tf_{t,d} > 0, 0 otherwise
+  // 2: wf_{t,d} = 1 if tf_{t,d} > 0, 0 otherwise
+  optional int32 tfidf_variant = 13 [default = 0];
+  // Only pick parameters based on similarity.
+  optional bool only_similar = 11 [default = false];
+  // Temperature by which to divide the logits to flatten the distribution over
+  // actions.
+  optional float tactic_temperature = 7;
+  optional bool reset_similarity_word_weights_each_round = 8;
+  optional int32 num_samples_per_tactic = 9;
+  // How much of the probability mass of tactics should be noise. Between 0.0
+  // and 1.0. The alpha value for the dirichlet distribution is auto-tuned
+  // according to the number of actions.
+  optional float dirichlet_noise_for_tactics = 10 [default = 0.0];
+}
+
+message SequenceActionGeneratorOptions {
+  // Directory for translation model configuration
+  optional string config_dir = 1;
+  // Number of sequences to sample for each model.
+  optional int32 batch_size = 2 [default = 16];
+  optional int32 input_sequence_length = 3 [default = 512];
+  optional int32 output_sequence_length = 4 [default = 16];
+  optional string input_vocab_file = 5;
+  optional string output_vocab_file = 6;
+  // Sample a batch of actions using a different temperature for each action.
+  optional bool scaled_temp_sampling = 7 [default = true];
+  // Force the first token of an action to be a tactic
+  optional bool force_tactic_diversity = 8 [default = true];
+  // Number of different tactics to sample applications for.
+  // batch_size actions are sampled for each tactic.
+  optional int32 diverse_tactic_count = 9 [default = 5];
+}
+
+message MCTSMetaOptions {
+  // Options for sampling option values for MCTSOptions.
+  // Each interval specifies a closed interval from which the
+  // the option values are sampled with uniform probability.
+  // For the explanations of the individual options, see the
+  // option in MCTSOptions with the same name.
+  optional IntegerInterval max_theorem_parameters = 1;
+}
+
+message MCTSOptions {
+  // Resource bounds for the prover
+  // Search stops after creating maximum number of search states:
+  optional int32 max_explored_states = 1 [deprecated = true];
+  // Stop search after this many tactic applications:
+  optional int32 max_tactic_applications = 2 [deprecated = true];
+  // Stop search after creating this many nodes in the proof search tree:
+  optional int32 max_explored_nodes = 3 [deprecated = true];
+
+  // Resource bounds before committing to an action.
+  // How many MCTS expansions before committing to an action?
+  optional int32 max_expansions = 4 [default = 1000000];
+
+  // Two parameters for ALPHA_ZERO style action values:
+  optional float c_base = 5 [default = 1.];
+  optional float c_init = 6 [default = 1.];
+  // And a third parameter for the PUCT formula to override the c_puct constant
+  // if set.
+  optional float c_puct = 18;
+
+  // controls what fraction of the reward is used to discourage long goals
+  optional float reward_short_goals = 7 [default = 0.0, deprecated = true];
+  // Only consider a limited number of top suggestions of the action generator.
+  optional int32 max_suggestions = 8;
+  optional int32 tactic_timeout_ms = 9 [default = 5000, deprecated = true];
+  optional float discount_factor = 10 [default = 0.9];
+  // Path to MCTS model containing the value network.
+  // If equal to the provers path_model_prefix, it will share the checkpoint.
+  // If not specified, prover will use a dummy implementation.
+  optional string path_mcts_model_prefix = 11;
+  // Ressource bound before terminating MCTS prover.
+  optional int32 max_total_expansions = 12;
+  // Ressource bound before terminating MCTS prover.
+  optional int32 max_search_depth = 13;
+  // How much noise to add at the root of MCTS searches
+  optional float noise_ratio_at_root = 14;
+  // Parameter for the noise to encourage exploration.
+  optional float dirichlet_noise_alpha = 15;
+  optional MCTSMetaOptions meta_options = 16;
+  optional bool avoid_expanding_failed_tactics = 17;
 }
 
 // Prover round stores information about phases of the proving
@@ -78,12 +172,19 @@ message ProverRound {
 message ProverOptions {
   // Model Architecture used for selecting the predictor.
   enum ModelArchitecture {
+    // Predictor for token-based string input model.
     PAIR_DEFAULT = 0;
-    HIST_AVG = 1;
-    HIST_CONV = 2;
-    HIST_ATT = 3;
+    HIST_AVG = 1 [deprecated = true];
+    HIST_CONV = 2 [deprecated = true];
+    HIST_ATT = 3 [deprecated = true];
+    // String inputs, but with theorem scores conditioned on tactic.
     PARAMETERS_CONDITIONED_ON_TAC = 4;
+    // Predictor for graph representation inputs.
     GNN_GOAL = 5;
+    UNKNOWN = 6;
+    // Graph representation inputs with theorem scores conditioned on tactic.
+    GRAPH_PARAMETERS_CONDITIONED_ON_TAC = 7;
+    SEQUENCE_ACTION = 8;
   }
   optional string path_theorem_database = 1;
   optional string path_model_prefix = 2;
@@ -94,7 +195,7 @@ message ProverOptions {
   optional string theorem_embeddings = 5;
   // Deprecated, we no longer load a builtin library in stateless hol light.
   optional string builtin_library = 6 [default = 'core', deprecated = true];
-  // Currently supported provers: "nobacktrack", "bfs".
+  // Currently supported provers: "nobacktrack", "bfs", "mcts"
   optional string prover = 7;
   optional BFSOptions bfs_options = 8;
   // Which splits should be attempted. If empty, then the TESTING split is
@@ -105,7 +206,7 @@ message ProverOptions {
   // each tactic applications. Timeouts less than 10 seconds are probably not
   // respected at all.
   optional float timeout_seconds = 10 [default = 1000000.0];
-  optional string path_emb_model_prefix = 11;
+  optional string path_emb_model_prefix = 11 [deprecated = true];
   optional ModelArchitecture model_architecture = 12;
   optional ActionGeneratorOptions action_generator_options = 13;
   // For the automated prove-train loop: rounds might be labeled.
@@ -117,6 +218,52 @@ message ProverOptions {
   repeated string library_tags = 16;
   // Per-tactic timeout.
   optional int64 tactic_timeout_ms = 17 [default = 5000];
+  // If model_architecture is GNN_GOAL, then this message must correspond to the
+  // type graph representation of inputs used during training.
+  optional GraphRepresentation graph_representation = 18;
+  optional MCTSOptions mcts_options = 19;
+
+  // Batch size for predicting embeddings (theorem/goal)
+  optional int64 max_embedding_batch_size = 20 [default = 128];
+  // Batch size for predicting scores from theorem/goal embeddings.
+  optional int64 max_score_batch_size = 21 [default = 8192];
+  // Useful when launching multiple prover runs in the same beam job.
+  // The subdirectory to store the prover run in. Parent directory specified
+  // by --out_dir when running the prover.
+  optional string prover_run_subdirectory = 22;
+  // Use strong proof-level pruning instead of pruning individual theorem
+  // parameters. WARNING: use only together with
+  // ConvertorOptions.extract_only_acyclic_proofs: true.
+  optional bool prune_proof = 23;
+  // Override option for loading seqtoseq action generator.
+  optional SequenceActionGeneratorOptions sequence_action_generator_options =
+      24;
+}
+
+// Statistics on the MCTS search.
+message SearchStatistics {
+  // Number of steps MCTS committed to
+  optional int64 search_depth = 1;
+  // Number of expansions done in MCTS
+  optional int64 total_expansions = 2;
+  // Number of search states created during MCTS
+  optional int64 num_search_states = 3;
+  // Prediction time of policy and value network
+  optional float total_prediction_time_sec = 4;
+  repeated float mcts_path_values = 5;
+  // For each MCTS search, what was the KL divergence between prior and inferred
+  // policy?
+  repeated float policy_kl_divergences = 6;
+  // Number of expansions that failed to produce a new search state.
+  optional int64 failed_expansions = 7;
+  repeated float mcts_path_target_values = 8;
+  repeated float mcts_path_values_difference = 9;
+  repeated float mcts_path_values_squared_difference = 10;
+  repeated float mcts_values_all_states = 11;
+  // Deprecated as it contains the same value as mcts_path_values_difference[0]
+  repeated float mcts_initial_root_values_difference = 12 [deprecated = true];
+  optional deepmath_deephol.Histogram goals_per_search_state = 13;
+  optional deepmath_deephol.Histogram assumptions_per_goal = 14;
 }
 
 message ProofLog {
@@ -136,6 +283,13 @@ message ProofLog {
   optional deepmath.ProverTask prover_task = 8;
   // Theorem that is actually logged in the database that this is a proof of.
   optional deepmath.Theorem theorem_in_database = 9;
+  // Statistics about the MCTS search.
+  optional SearchStatistics search_statistics = 10;
+  // Time in milli-seconds spent pruning.
+  optional int64 pruning_time_ms = 11;
+  // Number of proof steps pruned
+  optional int64 pruned_steps_num = 12;
+  repeated ProofNode extracted_proof = 13;
 }
 
 message ProofNode {
@@ -151,8 +305,14 @@ message ProofNode {
   repeated TacticApplication proofs = 2;
   // Status of the proof-node in this search tree.
   optional Status status = 3 [default = UNKNOWN];
-  // Time spent in the action generation of this node.
+  // Time spent in the action generation, embedding, and theorem scores.
   optional int64 action_generation_time_millisec = 4;
+  optional int64 proof_state_emb_time_ms = 7;
+  optional int64 theorem_scores_time_ms = 8;
+  optional int64 assumptions_ranking_time_ms = 9;
+  optional int64 heuristic_ranking_time_ms = 10;
+  // Whether the goal in this node is root goal.
+  optional bool root_goal = 5 [default = false];
 }
 
 message Tactic {
@@ -167,6 +327,12 @@ message Tactic {
   optional int64 id = 1;
   optional string name = 2;
   repeated ParameterType parameter_types = 3;
+  // Restrict this tactic to use only theorems from the assumption list as
+  // arguments for THEOREM and THEOREM_LIST ParameterTypes.
+  optional bool only_assumptions_as_arguments = 4;
+  // Other tactics that this tactic is a replacement for. The names listed here
+  // will be mapped to the same tactic ID while generating TF examples.
+  repeated string replaces = 5;
 }
 
 message TacticApplication {
@@ -195,6 +361,8 @@ message TacticApplication {
   optional string error_message = 5;
   // Time in milli-seconds spent in tactics application.
   optional int32 time_spent = 6;
+  // Time in milli-seconds spent pruning.
+  optional int32 pruning_time_spent_ms = 10;
   // True if this subtree was closed (successfully proved) during proof search.
   optional bool closed = 7 [default = false];
   // Score given by the ActionGenerator.
@@ -202,6 +370,8 @@ message TacticApplication {
   // Zero-based index in the sorted list of suggestions of ActionGenerator.
   // Highest rated suggestions are reported first. (Lower rank is better.)
   optional int32 rank = 9;
+  // Number of premises that were pruned by strong pruning.
+  optional int32 strong_pruning_successful_num = 11;
 }
 
 message TacticsInfo {
@@ -218,4 +388,92 @@ message TacticParameter {
   optional string unknown = 5;
   // Optional: hard negative theorems.
   repeated deepmath.Theorem hard_negative_theorems = 6;
+}
+
+message GraphRepresentation {
+  enum SharingEnum {
+    // Default, processing should fail.
+    UNKNOWN = 0;
+    // Abstract syntax tree representation
+    NO_SHARING = 1;
+    // Sub-expression sharing
+    SHARING = 2;
+    // Only share the leafs
+    LEAF_SHARING = 3;
+    // Sub-expression sharing unless the subexpressions are semantically
+    // different in their contexts (although literally equal).
+    SEMANTICAL_SHARING = 4;
+  }
+  enum EdgeLabelsEnum {
+    // Default, processing should fail.
+    UNKNOWN_EDGELABELSENUM = 0;
+    // n children get labels (0 1 2 ... n-2 n-1).
+    // The label is treated as a continuous feature so the number of children
+    // should be kept small.
+    // May be used for SEMANTICAL_SHARING and backward compatibility
+    // with some old experiments.
+    INCREASING = 1;
+    // n children get labels (0 0 ... 0 1).
+    LAST_ONE_OTHERS_ZERO = 2;
+  }
+  optional bool subexpression_sharing = 1 [default = true, deprecated = true];
+  optional int32 random_edges_per_node = 2 [default = 0];
+  optional SharingEnum sharing = 3 [default = SHARING];
+  optional bool variable_blinding = 4 [default = false];
+  optional EdgeLabelsEnum edge_labels = 5;
+  // Whether assumptions of goals and hypotheses of theorems are included.
+  optional bool include_assumptions = 6;
+  // Inserts an additional '<TYPE>' atom as the first atom in each S-expression
+  // subexpression representing a type constructor application with zero or
+  // more arguments. The '<TYPE>' atoms represent the kind of the S-expression
+  // in the same way as 'v' atoms do for variables, 'c' atoms do for constants,
+  // etc.
+  //
+  // This option is HOL Light specific.
+  //
+  // Example:
+  // (a (c (fun (bool) (bool)) ~) (c (bool) T))
+  // is transformed into
+  // (a (c (<TYPE> fun (<TYPE> bool) (<TYPE> bool)) ~) (c (<TYPE> bool) T))
+  optional bool type_atoms = 7 [default = false];
+  // Whether previous proof states are included in the graph representation.
+  // If non-zero value is provided, a special graph token <proof_state_history>
+  // is introduced and specified number of previous proof states is included.
+  optional int32 history_bound = 8 [default = 0];
+  // Replaces bound variable names with their de Bruijn indexes
+  // in S-expressions. That allows alpha-equivalent subexpressions to be shared
+  // in SHARING and SEMANTICAL_SHARING modes.
+  //
+  // This option is HOL Light specific.
+  //
+  // Example:
+  // (
+  //   l
+  //   (v A x)
+  //   (
+  //     a
+  //     (a (c (fun (fun B A) (fun (fun C C) (bool))) f) (l (v B y) (v A x)))
+  //     (l (v C z) (v C z))
+  //   )
+  // )
+  // is transformed into
+  // (
+  //   l
+  //   (v A 2)
+  //   (
+  //     a
+  //     (a (c (fun (fun B A) (fun (fun C C) (bool))) f) (l (v B 1) (v A 2)))
+  //     (l (v C 1) (v C 1))
+  //   )
+  // )
+  optional bool de_bruijn_indexes = 9 [default = false];
+  // Uses '<BOUND>' labels for bound variable name nodes instead of the variable
+  // names. Only supported in SEMANTICAL_SHARING mode. Not compatible
+  // with variable_blinding.
+  //
+  // This option is HOL Light specific.
+  // Example:
+  // (l (v A x) (l (v B y) (c (bool) T)))
+  // uses '<BOUND>' labels for nodes representing 'x' and 'y'.
+  optional bool bound_variable_blinding = 10 [default = false];
 }

@@ -1,19 +1,16 @@
 """Implementation of Holparam experiments."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 import pickle
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from deepmath.deephol.train import architectures
 from deepmath.deephol.train import data
 from deepmath.deephol.train import model
 from deepmath.deephol.train import utils
+from tensorflow.contrib import estimator as contrib_estimator
+from tensorflow.contrib import training as contrib_training
 
 tf.flags.DEFINE_string(
     'hparams', '',
@@ -129,7 +126,7 @@ def train_and_eval(params):
       'thms_hard_negatives': tf.placeholder(dtype=tf.string, shape=[None])
   }
   label_spec = {'tac_id': tf.placeholder(dtype=tf.int64, shape=[None])}
-  build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
+  build_input = contrib_estimator.build_raw_supervised_input_receiver_fn
   input_receiver_fn = build_input(feature_spec, label_spec)
   exporter = tf.estimator.BestExporter(
       name='best_exporter',
@@ -158,7 +155,7 @@ def main(argv):
 
   tf.logging.set_verbosity(tf.logging.INFO)
 
-  hparams = tf.contrib.training.HParams(
+  hparams = contrib_training.HParams(
       text_summaries=False,
       dataset_dir=FLAGS.dataset_dir,
       # Eval set can optionally be different from the training set.

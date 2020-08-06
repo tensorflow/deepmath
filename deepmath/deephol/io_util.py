@@ -3,24 +3,20 @@
 Helper methods are to maintain invariants/assumptions about data, and do any
 light-weight pre/post-processing.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-# Import Type Annotations
-from __future__ import print_function
+import itertools
 import re
-
-import tensorflow as tf
-from typing import List, Optional, Text
+from typing import List, Optional, Text, Iterable
+import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
 from deepmath.deephol import deephol_pb2
-from deepmath.deephol.public import recordio_util
+from deepmath.deephol import theorem_utils
+from deepmath.public import recordio_util
 from deepmath.proof_assistant import proof_assistant_pb2
 
 
-def _process_tactics_and_replacements(tactics_info: deephol_pb2.TacticsInfo,
-                                      replacements: deephol_pb2.TacticsInfo
-                                     ) -> List[deephol_pb2.Tactic]:
+def _process_tactics_and_replacements(
+    tactics_info: deephol_pb2.TacticsInfo,
+    replacements: deephol_pb2.TacticsInfo) -> List[deephol_pb2.Tactic]:
   """Check tactics are in order, have no gap in id, and apply replacements."""
   bad_ids = [(i, tactic.id)
              for i, tactic in enumerate(tactics_info.tactics)
@@ -107,9 +103,9 @@ def write_protos(filename: Text, protos, text_output=True):
     recordio_util.write_protos_to_recordio(filename, protos)
 
 
-def load_tactics_from_file(tactics_filename: Text,
-                           tactics_replacement_filename: Optional[Text]
-                          ) -> List[deephol_pb2.Tactic]:
+def load_tactics_from_file(
+    tactics_filename: Text,
+    tactics_replacement_filename: Optional[Text]) -> List[deephol_pb2.Tactic]:
   """Load tactics from file, and (optional) apply replacements."""
   tactics_info = load_text_proto(tactics_filename, deephol_pb2.TacticsInfo,
                                  'tactics')
@@ -122,8 +118,8 @@ def load_tactics_from_file(tactics_filename: Text,
   return _process_tactics_and_replacements(tactics_info, replacements)
 
 
-def load_theorem_database_from_file(filename: Text
-                                   ) -> proof_assistant_pb2.TheoremDatabase:
+def load_theorem_database_from_file(
+    filename: Text) -> proof_assistant_pb2.TheoremDatabase:
   """Load a theorem database from a text protobuf file."""
   theorem_database = proof_assistant_pb2.TheoremDatabase()
   if filename.endswith('.recordio'):
@@ -135,9 +131,29 @@ def load_theorem_database_from_file(filename: Text
   else:
     with tf.gfile.Open(filename) as f:
       text_format.MergeLines(f, theorem_database)
+
+  # Check if theorem database has split info.
+  split_info_warning_thrown = False
+  for theorem in theorem_database.theorems:
+    definition_tags = [
+        proof_assistant_pb2.Theorem.DEFINITION,
+        proof_assistant_pb2.Theorem.TYPE_DEFINITION
+    ]
+    if (theorem.tag not in definition_tags and
+        theorem.training_split == proof_assistant_pb2.Theorem.UNKNOWN and
+        not split_info_warning_thrown):
+      split_info_warning_thrown = True
+      tf.logging.warning('Theorem in database lacks split information.')
   tf.logging.info('Successfully read theorem database from %s (%d theorems).',
                   filename, len(theorem_database.theorems))
   return theorem_database
+
+
+def load_fingerprints_from_file(filename):
+  with tf.gfile.Open(filename) as f:
+    fingerprints = [int(line.rstrip()) for line in f]
+  tf.logging.info('Read %d fingerprints from %s.', len(fingerprints), filename)
+  return fingerprints
 
 
 def load_text_protos(filename, proto_class):
@@ -155,6 +171,14 @@ def load_text_protos(filename, proto_class):
 
 
 def read_protos(pattern: Text, proto_class):
+  """Wrapper to fix legacy proof logs."""
+  if proto_class() == deephol_pb2.ProofLog():
+    return read_proof_logs(pattern)
+  else:
+    return _read_protos(pattern, proto_class)
+
+
+def _read_protos(pattern: Text, proto_class):
   r"""Load protos or a single proto from various possible sources.
 
   The following sources are possible:
@@ -173,7 +197,7 @@ def read_protos(pattern: Text, proto_class):
   patterns = pattern.split(',')
   if len(patterns) > 1:
     for pattern in patterns:
-      for proto in read_protos(pattern, proto_class):
+      for proto in _read_protos(pattern, proto_class):
         yield proto
     return
   match = re.search('@\\d+$', pattern)
@@ -196,6 +220,33 @@ def read_protos(pattern: Text, proto_class):
         yield proto
 
 
+def read_proof_logs(pattern: Text) -> Iterable[deephol_pb2.ProofLog]:
+  """Read proof logs, with format of pattern as in read_protos.
+
+  The following sources are possible:
+     - Any comma separated sources below:
+     - glob of files with textpb or pbtxt extension: single text proto files.
+     - glob of files with textpbs or pbtxts extension: proto text representation
+                                                       in each line.
+
+  This method also in-memory fixes legacy proof logs being read before yielding.
+
+  Args:
+    pattern: Either a sharding pattern or a comma separated sharding patterns.
+
+  Yields:
+    ProofLog protos from the files with given pattern.
+  """
+  count = 0
+  count_nodes = 0
+  for proof_log in _read_protos(pattern, deephol_pb2.ProofLog):
+    count += 1
+    count_nodes += len(proof_log.nodes)
+    yield fix_legacy_proof_log(proof_log)
+  tf.logging.info('Read total %d ProofLog protos containing %d ProofNode.',
+                  count, count_nodes)
+
+
 def options_reader(options_proto, options_proto_path: Text,
                    overwrite: Optional[Text]):
   """Generic options reader, which can also be easily saved as protos.
@@ -213,3 +264,39 @@ def options_reader(options_proto, options_proto_path: Text,
     text_format.Merge(overwrite, ret)
   tf.logging.info('Options:\n\n%s\n\n', ret)
   return ret
+
+
+def fix_legacy_proof_log(proof_log: deephol_pb2.ProofLog):
+  """Fixes proof log to satisfy conditions we assume for all logs.
+
+  The function ensures that:
+  1) All proof log nodes have the goal with tag GOAL.
+  2) At least one proof log node is marked that it has a root goal. If none was
+     marked as such originally, then the first node is marked.
+  3) Hypotheses in goals are turned into assumptions.
+
+  Args:
+    proof_log: Proof log to be fixed.
+
+  Returns:
+    Fixed proof log.
+  """
+
+  log_has_root_goal = False
+  if proof_log.HasField('theorem_in_database'):
+    theorem_utils.convert_legacy_theorem(proof_log.theorem_in_database)
+
+  for node in itertools.chain(proof_log.nodes, proof_log.extracted_proof):
+    log_has_root_goal |= node.root_goal
+    theorem_utils.convert_legacy_goal(node.goal)
+    for tactic_application in node.proofs:
+      for subgoal in tactic_application.subgoals:
+        theorem_utils.convert_legacy_goal(subgoal)
+      for param in tactic_application.parameters:
+        for theorem_parameter in param.theorems:
+          theorem_utils.convert_legacy_theorem(theorem_parameter)
+        for negative in param.hard_negative_theorems:
+          theorem_utils.convert_legacy_theorem(negative)
+  if not log_has_root_goal and proof_log.nodes:
+    proof_log.nodes[0].root_goal = True
+  return proof_log

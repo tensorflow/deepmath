@@ -4,10 +4,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import collections
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from deepmath.deephol.train import losses
 from deepmath.deephol.train import utils
 from deepmath.deephol.train import wavenet
+from tensorflow.contrib import util as contrib_util
 
 FLAGS = tf.flags.FLAGS
 
@@ -41,7 +42,7 @@ def _pad_up_to(value, size, axis, name=None):
     paddings = tf.sparse_to_dense(ids, tf.stack([tf.rank(value), 2]), need)
     padded = tf.pad(value, paddings, name=name)
     # Fix shape inference
-    axis = tf.contrib.util.constant_value(axis)
+    axis = contrib_util.constant_value(axis)
     shape = value.get_shape()
     if axis is not None and shape.ndims is not None:
       shape = shape.as_list()

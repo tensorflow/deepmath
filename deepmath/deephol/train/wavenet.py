@@ -43,7 +43,7 @@ def wavenet_layer(inp,
   returned without reshaping, this allows a multilayer wavenet to be implemented
   by subsequent calls to wavenet_layer and rate=2.
 
-  Arguments:
+  Args:
     inp: input tensor
     depth: depth of the intermediate nonlinear activations before reduced.
     width: the width of the conv filter, 2 by default.
@@ -96,7 +96,7 @@ def wavenet_block(net,
                   keep_prob=1.0):
   """Stack many increasingly dilated wavenet layers together.
 
-  Arguments:
+  Args:
     net: input tensor, expected to be 4D to start [batch, text_length, 1, dim]
     num_layers: Number of wavenet layers to apply in the block, note that This
       requires the input text_length to be divisible by 2**num_layers.

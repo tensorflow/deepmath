@@ -200,7 +200,7 @@ def options_reader(options_proto, options_proto_path: Text,
                    overwrite: Optional[Text]):
   """Generic options reader, which can also be easily saved as protos.
 
-  Arguments:
+  Args:
     options_proto: Type of the options proto object.
     options_proto_path: Path to file containing an options_proto.
     overwrite: A string containing options proto object.

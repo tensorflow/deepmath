@@ -71,7 +71,7 @@ def _pad_to_multiple(value, size, axis, name=None):
 def wavenet_encoding(net, params, mode):
   """Embed a given input tensor using multiple wavenet blocks.
 
-  Arguments:
+  Args:
     net: input tensor of shape [batch, text_length, word_embedding_size]
     params: Hyperparameters.
     mode: Estimator mode.

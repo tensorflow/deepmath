@@ -24,7 +24,7 @@ class ProofLogToTFExample(object):
                options: options_pb2.ConvertorOptions):
     """Initializer.
 
-    Arguments:
+    Args:
       tactic_name_id_map: mapping from tactic names to ids.
       theorem_database: database containing list of global theorems with splits
       options: options to control forbidden parameters and graph representations
@@ -97,7 +97,7 @@ class ProofLogToTFExample(object):
     Note: it might be misleading to call these theorems. If the source is from
     an assumption, the theorem is of the form x |- x. We return x in this case.
 
-    Arguments:
+    Args:
       tactic_application: tactic application to extract the parameters from.
 
     Returns:
